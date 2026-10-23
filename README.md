@@ -10,8 +10,8 @@ threads.
 
 ## Status
 
-The repository is under active development. Do not install it as a stable
-release until version `0.1.0` is published.
+Version `0.1.0` is the first release. DeepSeek Harness itself remains in preview,
+so review the compatibility range before installing.
 
 ## Requirements
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 - 2026-10-24
 
 - Establish the plugin design, review aggregate, and project governance.
 - Take over the official `changes-review` tab through the public extension registry.

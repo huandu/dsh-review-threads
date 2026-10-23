@@ -3,7 +3,8 @@
 ## Supported DSH line
 
 - Minimum: `0.2.1-rc.1`
-- Tested: `0.2.1-rc.2`, `0.2.1-rc.3`
+- Release-verified real profile: `0.2.1-rc.2`
+- Compatibility target: `0.2.1-rc.3`
 - Maximum: `<0.2.2-0`
 
 ## Public API dependencies
