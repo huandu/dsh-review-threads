@@ -24,7 +24,10 @@ class MemoryTable implements TableLike {
     return this.values.entries()
   }
 
+  constructor(private readonly beforePut?: () => void) {}
+
   put(key: string, value: unknown): Promise<void> {
+    this.beforePut?.()
     this.values.set(key, structuredClone(value))
     return Promise.resolve()
   }
@@ -37,6 +40,7 @@ class MemoryTable implements TableLike {
 export interface MemoryServiceHarness {
   readonly service: ReviewThreadService
   readonly followups: readonly UserMessage[]
+  failNextPut(table: string, afterCalls?: number): void
 }
 
 export function createMemoryService(options?: {
@@ -44,11 +48,20 @@ export function createMemoryService(options?: {
   readonly cwd?: string
 }): MemoryServiceHarness {
   const tables = new Map<string, MemoryTable>()
+  const failures = new Map<string, number>()
   const domain = {
     table(name: string) {
       let table = tables.get(name)
       if (table === undefined) {
-        table = new MemoryTable()
+        table = new MemoryTable(() => {
+          const remaining = failures.get(name)
+          if (remaining === undefined) return
+          if (remaining <= 1) {
+            failures.delete(name)
+            throw new Error(`Injected failure for ${name}`)
+          }
+          failures.set(name, remaining - 1)
+        })
         tables.set(name, table)
       }
       return table
@@ -76,6 +89,9 @@ export function createMemoryService(options?: {
       options?.git ?? ({} as GitRunner),
     ),
     followups,
+    failNextPut(table, afterCalls = 1) {
+      failures.set(table, afterCalls)
+    },
   }
 }
 

@@ -112,6 +112,7 @@ export interface ReviewState {
   readonly bindingSuggestion: {
     readonly workScopeKey: string
     readonly patchMatches: boolean
+    readonly targetHasHistory: boolean
   } | null
   readonly threads: readonly ReviewThreadView[]
   readonly draft: ReviewDraftView | null

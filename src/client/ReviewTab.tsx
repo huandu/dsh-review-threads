@@ -130,6 +130,9 @@ const CSS = `
 .rt-body{min-height:0;flex:1;overflow:auto;padding:8px 0 20px}
 .rt-status{padding:16px;color:var(--dsw-alias-label-secondary)}
 .rt-draft{position:sticky;bottom:0;z-index:3;background:var(--dsw-alias-bg-l1);border-top:1px solid var(--dsw-alias-border-l3);padding:8px 12px;display:grid;grid-template-columns:minmax(130px,180px) minmax(0,1fr) auto auto;gap:8px;align-items:center;box-shadow:0 -8px 24px color-mix(in srgb,var(--dsw-alias-bg-l0) 72%,transparent)}
+.rt-binding{display:flex;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--dsw-alias-border-l3);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 8%,var(--dsw-alias-bg-l1));font-size:12px}
+.rt-binding-copy{min-width:0;flex:1}
+.rt-binding-warning{color:var(--dsw-alias-state-warning-primary)}
 .rt-select,.rt-input,.rt-textarea{box-sizing:border-box;width:100%;border:1px solid var(--dsw-alias-border-l3);border-radius:6px;background:var(--dsw-alias-bg-l0);color:var(--dsw-alias-label-primary);padding:5px 7px;font:inherit}
 .rt-textarea{min-height:54px;resize:vertical}
 .rt-primary{border:0;border-radius:6px;background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-on-brand);padding:6px 10px;cursor:pointer}
@@ -405,6 +408,7 @@ export function ReviewTab({
     readonly verdict: ReviewDecision
     readonly summary: string
   } | null>(null)
+  const [bindingDialog, setBindingDialog] = useState(false)
   useEffect(() => {
     const source = new EventSource(EVENTS_PATH)
     source.onmessage = () => {
@@ -504,6 +508,8 @@ export function ReviewTab({
     review?.kind === 'ready' ? review.value.currentDecision : null
   const approvalAvailable =
     review?.kind === 'ready' && review.value.approvalAvailable && draft === null
+  const bindingSuggestion =
+    review?.kind === 'ready' ? review.value.bindingSuggestion : null
 
   return (
     <div className="rt-root">
@@ -550,6 +556,26 @@ export function ReviewTab({
         )}
       </div>
       {error !== undefined && <div className="rt-error">{error}</div>}
+      {bindingSuggestion !== null && bindingSuggestion.patchMatches && (
+        <div className="rt-binding">
+          <span className="rt-binding-copy">
+            A working-tree Review has the same patch as this revision range.
+            {bindingSuggestion.targetHasHistory
+              ? ' This revision Review already has discussion history and will be merged.'
+              : ''}
+          </span>
+          <button
+            className="rt-secondary"
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setBindingDialog(true)
+            }}
+          >
+            Bind working review
+          </button>
+        </div>
+      )}
       <div className="rt-body">
         {summary?.kind === 'loading' && status('Reading changes…')}
         {summary?.kind === 'error' &&
@@ -739,6 +765,57 @@ export function ReviewTab({
                 }}
               >
                 Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {bindingDialog && bindingSuggestion !== null && (
+        <div className="rt-modal-backdrop" role="presentation">
+          <div
+            className="rt-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Bind working review"
+          >
+            <h2>Bind working review?</h2>
+            <p>
+              This revision range will point at the working-tree Review, so its
+              Review ID stays unchanged. Thread, comment, and submission IDs are
+              preserved, and both scopes remain aliases of the same Review.
+            </p>
+            {bindingSuggestion.targetHasHistory && (
+              <p className="rt-binding-warning">
+                Both Reviews contain history. The working Review will merge into
+                the revision Review open here; all thread and submission IDs are
+                retained, with duplicate line threads combined.
+              </p>
+            )}
+            <div className="rt-modal-actions">
+              <button
+                className="rt-secondary"
+                type="button"
+                onClick={() => {
+                  setBindingDialog(false)
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="rt-primary"
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  void (async () => {
+                    const saved = await act({
+                      action: 'bind_work_scope',
+                      workScopeKey: bindingSuggestion.workScopeKey,
+                    })
+                    if (saved) setBindingDialog(false)
+                  })()
+                }}
+              >
+                Bind and merge
               </button>
             </div>
           </div>

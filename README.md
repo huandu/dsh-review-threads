@@ -25,6 +25,8 @@ release until version `0.1.0` is published.
 - `/review <base>..<head>` opens a committed revision range. Use
   `/review <base>...<head>` for merge-base comparison.
 - Append `-- <paths...>` to limit either comparison to repository paths.
+- Use `/review bind <base>..<head>` to open a range whose patch matches the
+  current session's working Review; confirm the bind in the panel.
 
 The command only opens the Review panel. It does not send a conversation
 message or start an AI turn.

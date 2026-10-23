@@ -15,6 +15,7 @@ const required = [
   'docs/decisions/0001-take-over-official-review-tab.md',
   'docs/decisions/0002-review-aggregate-and-approval.md',
   'docs/decisions/0003-scope-identity-and-storage.md',
+  'docs/decisions/0004-working-to-revision-binding.md',
 ]
 
 for (const path of required) await access(path)

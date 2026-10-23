@@ -22,6 +22,8 @@ Review 后才对 AI 可见。AI 可以立即添加评论，但不能删除评论
 - `/review <base>..<head>` 打开已提交的 revision 区间；使用
   `/review <base>...<head>` 时按 merge-base 比较。
 - 两种比较都可以追加 `-- <paths...>` 限定仓库路径。
+- 使用 `/review bind <base>..<head>` 检查 revision 是否与当前会话的 working
+  Review 补丁一致，并在面板中确认绑定。
 
 该命令只打开 Review 面板，不发送对话消息，也不会启动 AI 回合。
 

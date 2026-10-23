@@ -25,7 +25,7 @@ export function registerReviewCommands(
     description:
       'Open the working-tree diff or a committed revision range in Review',
     input: {
-      hint: '[<base>..<head> [-- <paths...>]]',
+      hint: '[bind] [<base>..<head> [-- <paths...>]]',
     },
     handler: async ({ agent, rawInput, signal }) => {
       try {
@@ -43,6 +43,18 @@ export function registerReviewCommands(
           command.pathFilters,
           signal,
         )
+        if (command.kind === 'bind') {
+          const suggestion = service.bindingSuggestion(
+            scope.scopeKey,
+            agent.session.id,
+          )
+          if (suggestion === undefined || !suggestion.patchMatches) {
+            return {
+              kind: 'error',
+              text: 'No working review patch matches this revision range',
+            }
+          }
+        }
         return {
           kind: 'success',
           text: reviewOpenText({

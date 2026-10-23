@@ -5,13 +5,20 @@ export type ReviewCommand =
       readonly range: string
       readonly pathFilters: readonly string[]
     }
+  | {
+      readonly kind: 'bind'
+      readonly range: string
+      readonly pathFilters: readonly string[]
+    }
 
 const RANGE = /^(\S+)(\.\.\.?)(\S+)$/u
 
 export function parseReviewCommand(input: string): ReviewCommand {
   const trimmed = input.trim()
   if (trimmed.length === 0) return { kind: 'working' }
-  const [rangePart, pathPart] = trimmed.split(/\s+--\s*/u, 2)
+  const bind = trimmed.startsWith('bind ')
+  const commandInput = bind ? trimmed.slice('bind '.length).trim() : trimmed
+  const [rangePart, pathPart] = commandInput.split(/\s+--\s*/u, 2)
   const range = rangePart?.trim() ?? ''
   if (!RANGE.test(range)) {
     throw new Error('Expected /review <base>..<head> [-- <paths...>]')
@@ -35,5 +42,5 @@ export function parseReviewCommand(input: string): ReviewCommand {
   ) {
     throw new Error('Invalid review path filter')
   }
-  return { kind: 'revision', range, pathFilters }
+  return { kind: bind ? 'bind' : 'revision', range, pathFilters }
 }

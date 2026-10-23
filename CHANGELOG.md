@@ -26,3 +26,6 @@
   resolved commit ranges with optional path filters.
 - Persist working-tree snapshots across turns, re-anchor surviving threads, and
   share committed revision Reviews across sessions.
+- Detect matching working and revision patches, require explicit confirmation,
+  and bind them without changing Review, Thread, Comment, or Submission
+  identities. Existing revision history merges with rollback.

@@ -16,6 +16,14 @@ describe('review command', () => {
     )
   })
 
+  it('parses an explicit bind request', () => {
+    expect(parseReviewCommand('bind main..feature')).toEqual({
+      kind: 'bind',
+      range: 'main..feature',
+      pathFilters: [],
+    })
+  })
+
   it('rejects malformed ranges and unsafe path filters', () => {
     expect(() => parseReviewCommand('main')).toThrow(/base.*head/)
     expect(() => parseReviewCommand('main..head -- /etc/passwd')).toThrow(

@@ -319,17 +319,25 @@ ReviewSubmission 一旦成功即不可修改。更正通过下一次 submission 
 | `operations`              | 尚未共享的操作列表                              |
 | `createdAt` / `updatedAt` | 时间                                            |
 
-### 4.6 `bindings`
+### 4.6 `review_bindings`
 
-保存 working scope 与 revision scope 的绑定关系。绑定后：
+每条记录保存 working scope、revision scope、双方 Review ID、patch digest、
+操作状态（`pending`、`merging`、`committed`、`failed`）、失败原因和时间。
+绑定后：
 
 - working thread 继承到 revision scope。
 - 原 thread id 保持，不复制成第二条讨论。
-- 原 reviewId 保持。
 - 旧 working scope 与 revision scope 都解析到同一个 Review。
 - 后续会话打开 revision scope 会看到它。
 
-如果目标 revision scope 已存在 Review，绑定需要把 working Review 的 thread、submission 和 draft 原子合并到目标 Review；首版默认需要用户确认。thread ID 和 submission history 不允许重新生成。
+如果目标 revision Review 没有任何讨论历史，revision scope 直接改指向 working
+Review，Review ID 和所有实体 ID 保持不变。如果目标已有历史，则以 revision
+Review 为合并目标：thread、submission 和 draft 移到目标 Review；同一行重复
+thread 的评论合并到目标 thread，源 thread 保留为隐藏墓碑；所有 thread ID 和
+submission ID 不重新生成。用户必须在面板中确认冲突合并。
+
+绑定前先持久化 `merging` 状态。正常失败会恢复所有已触碰记录并写入
+`failed`；重试保持幂等。进程中断后可根据记录中的双方 Review ID 继续完成合并。
 
 ## 5. Review 与 Thread 状态机
 
@@ -579,10 +587,15 @@ diff options 生成稳定 key，因此不同会话打开同一区间会落到同
 
 Working scope 转成 revision scope 分两步：
 
-1. 用户提交代码后，插件的 `/review bind` 命令或 UI 按钮读取提交的 `baseOid`、`headOid` 和 patch digest。
-2. 如果 working scope 的最终 patch digest 与 revision diff 一致，显示可绑定提示；用户确认后写入 bindings，更新 Review 的 `activeScopeKey`，并让旧 working scope 与 revision scope 都解析到同一 Review。
+1. 用户打开 `/review <base>..<head>` 或 `/review bind <base>..<head>` 后，Host
+   解析提交 OID，并计算 revision file summary、单文件 diff 和 patch digest。
+2. Review 面板查询当前会话中 repo identity 相同、patch digest 相等的 working
+   scope，显示可绑定提示。
+3. 用户确认后写入 `review_bindings`。无目标历史时由 revision scope 接管
+   working Review；有目标历史时执行可回滚、可重试的合并。
 
-若 patch 不一致，不自动绑定，只允许手工选择一个 revision scope。绑定过程必须原子完成，避免部分 thread 卡在两个 scope。
+若 patch 不一致，不显示绑定入口。`/review bind` 在没有精确匹配时直接报错。
+绑定不能只比较文件列表或统计行数，必须比较完整的规范化 patch digest。
 
 ## 10. 兼容性与降级
 

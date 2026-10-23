@@ -10,6 +10,7 @@ import {
   type Decision,
   type DiffAnchor,
   type ReviewDraft,
+  type ReviewBinding,
   type ReviewOperation,
   type ReviewRecord,
   type ReviewSubmission,
@@ -63,6 +64,7 @@ export interface RevisionScopeInput {
 
 export class ReviewThreadService {
   private readonly pendingScopes = new Map<string, Promise<ScopeRecord>>()
+  private readonly pendingBindings = new Map<string, Promise<ReviewBinding>>()
 
   constructor(
     private readonly ctx: Context,
@@ -97,6 +99,10 @@ export class ReviewThreadService {
 
   private submissions() {
     return this.domain.table('review_submissions')
+  }
+
+  private bindings() {
+    return this.domain.table('review_bindings')
   }
 
   private async createScope(
@@ -269,7 +275,7 @@ export class ReviewThreadService {
       signal,
     )
     const diffs = await Promise.all(
-      summary.files.map((file, index) =>
+      summary.files.map((file) =>
         revisionFileDiff(
           this.git,
           repo.root,
@@ -278,13 +284,10 @@ export class ReviewThreadService {
           diffSpec,
           file,
           signal,
-        ).then((diff) => [index, diff] as const),
+        ),
       ),
     )
-    const patchDigest = hashJson({
-      summary,
-      diffs: diffs.sort(([left], [right]) => left - right),
-    })
+    const patchDigest = hashJson({ summary, diffs })
     return this.resolveRevision({
       repoIdentity: repo.identity,
       repoRoot: repo.root,
@@ -486,6 +489,386 @@ export class ReviewThreadService {
       this.scopeDiffSpec(scope),
       file,
       signal,
+    )
+  }
+
+  bindingSuggestion(
+    revisionScopeKey: string,
+    sessionId: SessionId,
+  ):
+    | {
+        readonly workScopeKey: string
+        readonly patchMatches: boolean
+        readonly targetHasHistory: boolean
+      }
+    | undefined {
+    const revision = this.scopes().get(revisionScopeKey)
+    if (
+      revision === undefined ||
+      revision.kind !== 'rev' ||
+      revision.patchDigest === null
+    ) {
+      return undefined
+    }
+    const work = [...this.scopes().entries()]
+      .map(([scopeKey, scope]) => ({ scopeKey, scope }))
+      .filter(
+        ({ scope }) =>
+          scope.kind === 'work' &&
+          scope.sessionId === sessionId &&
+          scope.repoIdentity === revision.repoIdentity &&
+          scope.patchDigest !== null &&
+          scope.reviewId !== revision.reviewId,
+      )
+      .sort((left, right) =>
+        right.scope.updatedAt.localeCompare(left.scope.updatedAt),
+      )[0]
+    if (work === undefined) return undefined
+    const binding = this.bindings().get(
+      this.bindingKey(work.scopeKey, revisionScopeKey),
+    )
+    if (binding?.state === 'committed') return undefined
+    return {
+      workScopeKey: work.scopeKey,
+      patchMatches: work.scope.patchDigest === revision.patchDigest,
+      targetHasHistory: this.reviewHasHistory(revision.reviewId),
+    }
+  }
+
+  async bindWorkingToRevision(input: {
+    readonly workScopeKey: string
+    readonly revisionScopeKey: string
+    readonly sessionId: SessionId
+  }): Promise<ReviewBinding> {
+    const key = this.bindingKey(input.workScopeKey, input.revisionScopeKey)
+    const pending = this.pendingBindings.get(key)
+    if (pending !== undefined) return pending
+    const task = this.applyBinding(input).finally(() => {
+      this.pendingBindings.delete(key)
+    })
+    this.pendingBindings.set(key, task)
+    return task
+  }
+
+  private bindingKey(workScopeKey: string, revisionScopeKey: string): string {
+    return `binding:${workScopeKey}->${revisionScopeKey}`
+  }
+
+  private bindingId(workScopeKey: string, revisionScopeKey: string): string {
+    return `binding:${hashJson({ workScopeKey, revisionScopeKey })}`
+  }
+
+  private async applyBinding(input: {
+    readonly workScopeKey: string
+    readonly revisionScopeKey: string
+    readonly sessionId: SessionId
+  }): Promise<ReviewBinding> {
+    const work = this.scopes().get(input.workScopeKey)
+    const revision = this.scopes().get(input.revisionScopeKey)
+    if (
+      work === undefined ||
+      work.kind !== 'work' ||
+      work.sessionId !== input.sessionId ||
+      work.patchDigest === null
+    ) {
+      throw new Error('Working review scope is unavailable')
+    }
+    if (
+      revision === undefined ||
+      revision.kind !== 'rev' ||
+      revision.patchDigest === null
+    ) {
+      throw new Error('Revision review scope is unavailable')
+    }
+    if (
+      work.repoIdentity !== revision.repoIdentity ||
+      work.patchDigest !== revision.patchDigest
+    ) {
+      throw new Error('The working patch does not match the revision range')
+    }
+    const key = this.bindingKey(input.workScopeKey, input.revisionScopeKey)
+    const existing = this.bindings().get(key)
+    if (existing?.state === 'committed') return existing
+
+    const sourceReviewId = existing?.sourceReviewId ?? work.reviewId
+    const targetReviewId = existing?.targetReviewId ?? revision.reviewId
+    if (sourceReviewId === targetReviewId) {
+      const now = new Date().toISOString()
+      const binding: ReviewBinding = {
+        bindingId: this.bindingId(input.workScopeKey, input.revisionScopeKey),
+        sourceWorkScopeKey: input.workScopeKey,
+        targetRevisionScopeKey: input.revisionScopeKey,
+        sourceReviewId,
+        targetReviewId,
+        patchDigest: work.patchDigest,
+        state: 'committed',
+        error: null,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+        committedAt: now,
+      }
+      await this.bindings().put(key, binding)
+      return binding
+    }
+
+    const now = new Date().toISOString()
+    const binding: ReviewBinding = {
+      bindingId: this.bindingId(input.workScopeKey, input.revisionScopeKey),
+      sourceWorkScopeKey: input.workScopeKey,
+      targetRevisionScopeKey: input.revisionScopeKey,
+      sourceReviewId,
+      targetReviewId,
+      patchDigest: work.patchDigest,
+      state: 'merging',
+      error: null,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      committedAt: null,
+    }
+    await this.bindings().put(key, binding)
+
+    if (!this.reviewHasHistory(targetReviewId)) {
+      const sourceReview = this.reviews().get(sourceReviewId)
+      const targetReview = this.reviews().get(targetReviewId)
+      const revisionScope = this.scopes().get(input.revisionScopeKey)
+      if (
+        sourceReview === undefined ||
+        targetReview === undefined ||
+        revisionScope === undefined
+      ) {
+        throw new Error('A review required for binding no longer exists')
+      }
+      try {
+        await this.scopes().put(input.revisionScopeKey, {
+          ...revisionScope,
+          reviewId: sourceReviewId,
+          updatedAt: new Date().toISOString(),
+        })
+        await this.reviews().put(sourceReviewId, {
+          ...sourceReview,
+          activeScopeKey: input.revisionScopeKey,
+          updatedAt: new Date().toISOString(),
+        })
+        await this.reviews().delete(targetReviewId)
+        const now = new Date().toISOString()
+        const linked: ReviewBinding = {
+          ...binding,
+          targetReviewId: sourceReviewId,
+          state: 'committed',
+          updatedAt: now,
+          committedAt: now,
+        }
+        await this.bindings().put(key, linked)
+        return linked
+      } catch (error) {
+        await this.scopes().put(input.revisionScopeKey, revisionScope)
+        await this.reviews().put(sourceReviewId, sourceReview)
+        await this.reviews().put(targetReviewId, targetReview)
+        await this.bindings().put(key, {
+          ...binding,
+          state: 'failed',
+          error: error instanceof Error ? error.message : String(error),
+          updatedAt: new Date().toISOString(),
+        })
+        throw error
+      }
+    }
+
+    const previousThreads = new Map<string, ThreadRecord | undefined>()
+    const previousDrafts = new Map<string, ReviewDraft | undefined>()
+    const previousSubmissions = new Map<string, ReviewSubmission | undefined>()
+    const previousScopes = new Map<string, ScopeRecord | undefined>()
+    const previousReviews = new Map<string, ReviewRecord | undefined>()
+    try {
+      await this.mergeReviews(
+        sourceReviewId,
+        targetReviewId,
+        input.revisionScopeKey,
+        {
+          threads: previousThreads,
+          drafts: previousDrafts,
+          submissions: previousSubmissions,
+          scopes: previousScopes,
+          reviews: previousReviews,
+        },
+      )
+      const committed: ReviewBinding = {
+        ...binding,
+        state: 'committed',
+        updatedAt: new Date().toISOString(),
+        committedAt: new Date().toISOString(),
+      }
+      await this.bindings().put(key, committed)
+      return committed
+    } catch (error) {
+      for (const [threadId, value] of previousThreads) {
+        if (value === undefined) await this.threads().delete(threadId)
+        else await this.threads().put(threadId, value)
+      }
+      for (const [draftId, value] of previousDrafts) {
+        if (value === undefined) await this.drafts().delete(draftId)
+        else await this.drafts().put(draftId, value)
+      }
+      for (const [submissionId, value] of previousSubmissions) {
+        if (value === undefined) await this.submissions().delete(submissionId)
+        else await this.submissions().put(submissionId, value)
+      }
+      for (const [scopeKey, value] of previousScopes) {
+        if (value === undefined) await this.scopes().delete(scopeKey)
+        else await this.scopes().put(scopeKey, value)
+      }
+      for (const [reviewId, value] of previousReviews) {
+        if (value === undefined) await this.reviews().delete(reviewId)
+        else await this.reviews().put(reviewId, value)
+      }
+      await this.bindings().put(key, {
+        ...binding,
+        state: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+        updatedAt: new Date().toISOString(),
+      })
+      throw error
+    }
+  }
+
+  private async mergeReviews(
+    sourceReviewId: string,
+    targetReviewId: string,
+    targetRevisionScopeKey: string,
+    previous: {
+      readonly threads: Map<string, ThreadRecord | undefined>
+      readonly drafts: Map<string, ReviewDraft | undefined>
+      readonly submissions: Map<string, ReviewSubmission | undefined>
+      readonly scopes: Map<string, ScopeRecord | undefined>
+      readonly reviews: Map<string, ReviewRecord | undefined>
+    },
+  ): Promise<void> {
+    const source = this.reviews().get(sourceReviewId)
+    const target = this.reviews().get(targetReviewId)
+    if (source === undefined || target === undefined) {
+      throw new Error('A review required for binding no longer exists')
+    }
+    previous.reviews.set(sourceReviewId, source)
+    previous.reviews.set(targetReviewId, target)
+    const targetDecisionIsNewer =
+      source.currentDecisionAt !== null &&
+      (target.currentDecisionAt === null ||
+        source.currentDecisionAt > target.currentDecisionAt)
+    const mergedReview: ReviewRecord = {
+      ...target,
+      activeScopeKey: targetRevisionScopeKey,
+      ...(targetDecisionIsNewer
+        ? {
+            currentDecision: source.currentDecision,
+            currentDecisionAt: source.currentDecisionAt,
+            currentDecisionSubmissionId: source.currentDecisionSubmissionId,
+          }
+        : {}),
+      codeChangedSinceDecision:
+        source.codeChangedSinceDecision || target.codeChangedSinceDecision,
+      updatedAt: new Date().toISOString(),
+    }
+    await this.reviews().put(targetReviewId, mergedReview)
+
+    const mergedThreadIds = new Map<string, string>()
+    for (const thread of this.threadsForReview(sourceReviewId)) {
+      previous.threads.set(thread.threadId, this.threads().get(thread.threadId))
+      const duplicate =
+        thread.deletedAt === null
+          ? this.threadForAnchor(
+              targetReviewId,
+              thread.anchor.path,
+              thread.anchor.side,
+              thread.anchor.line,
+            )
+          : undefined
+      if (duplicate === undefined) {
+        mergedThreadIds.set(thread.threadId, thread.threadId)
+        await this.threads().put(thread.threadId, {
+          ...thread,
+          reviewId: targetReviewId,
+          updatedAt: new Date().toISOString(),
+        })
+        continue
+      }
+      mergedThreadIds.set(thread.threadId, duplicate.threadId)
+      previous.threads.set(
+        duplicate.threadId,
+        this.threads().get(duplicate.threadId),
+      )
+      const now = new Date().toISOString()
+      await this.threads().put(duplicate.threadId, {
+        ...duplicate,
+        revision: Math.max(duplicate.revision, thread.revision) + 1,
+        publishedRevision:
+          duplicate.publishedRevision === null &&
+          thread.publishedRevision === null
+            ? null
+            : Math.max(
+                duplicate.publishedRevision ?? 0,
+                thread.publishedRevision ?? 0,
+              ),
+        pendingDraftIds: [
+          ...new Set([...duplicate.pendingDraftIds, ...thread.pendingDraftIds]),
+        ],
+        comments: [...duplicate.comments, ...thread.comments],
+        updatedAt: now,
+      })
+      await this.threads().put(thread.threadId, {
+        ...thread,
+        reviewId: targetReviewId,
+        revision: thread.revision + 1,
+        deletedAt: now,
+        publishedDeletedAt: now,
+        updatedAt: now,
+      })
+    }
+
+    for (const [draftId, draft] of this.drafts().entries()) {
+      if (draft.reviewId !== sourceReviewId) continue
+      previous.drafts.set(draftId, this.drafts().get(draftId))
+      await this.drafts().put(draftId, {
+        ...draft,
+        reviewId: targetReviewId,
+        threadIds: draft.threadIds.map(
+          (threadId) => mergedThreadIds.get(threadId) ?? threadId,
+        ),
+        updatedAt: new Date().toISOString(),
+      })
+    }
+    for (const [submissionId, submission] of this.submissions().entries()) {
+      if (submission.reviewId !== sourceReviewId) continue
+      previous.submissions.set(
+        submissionId,
+        this.submissions().get(submissionId),
+      )
+      await this.submissions().put(submissionId, {
+        ...submission,
+        reviewId: targetReviewId,
+      })
+    }
+    for (const [scopeKey, scope] of this.scopes().entries()) {
+      if (scope.reviewId !== sourceReviewId) continue
+      previous.scopes.set(scopeKey, this.scopes().get(scopeKey))
+      await this.scopes().put(scopeKey, {
+        ...scope,
+        reviewId: targetReviewId,
+        updatedAt: new Date().toISOString(),
+      })
+    }
+  }
+
+  private reviewHasHistory(reviewId: string): boolean {
+    return (
+      this.threadsForReview(reviewId).some(
+        (thread) => thread.deletedAt === null && thread.comments.length > 0,
+      ) ||
+      [...this.drafts().entries()].some(
+        ([, draft]) => draft.reviewId === reviewId,
+      ) ||
+      [...this.submissions().entries()].some(
+        ([, submission]) => submission.reviewId === reviewId,
+      )
     )
   }
 

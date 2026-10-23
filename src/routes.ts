@@ -221,7 +221,13 @@ async function reviewStateHandler(
       baseOid: scope.baseOid,
       headOid: scope.headOid,
     },
-    bindingSuggestion: null,
+    bindingSuggestion:
+      scope.kind === 'rev'
+        ? (ctx.reviewThreads.bindingSuggestion(
+            scope.scopeKey,
+            sessionId as SessionId,
+          ) ?? null)
+        : null,
     threads: ctx.reviewThreads
       .userThreads(review.reviewId)
       .map((thread): ReviewThreadView => ({
@@ -324,6 +330,17 @@ async function actionHandler(
     const activeScope = ctx.reviewThreads.get(review.activeScopeKey)
     if (activeScope?.kind === 'work' && activeScope.sessionId !== sessionId) {
       return conflict('Working review belongs to another session')
+    }
+    if (action === 'bind_work_scope') {
+      if (activeScope?.kind !== 'rev') {
+        return conflict('Only a revision review can receive a working review')
+      }
+      const binding = await ctx.reviewThreads.bindWorkingToRevision({
+        workScopeKey: text(body['workScopeKey'], 'workScopeKey', 20_000),
+        revisionScopeKey: activeScope.scopeKey,
+        sessionId,
+      })
+      return json({ ok: true, binding })
     }
     const approvalAvailable = ctx.reviewThreads.approvalAvailable(
       reviewId,

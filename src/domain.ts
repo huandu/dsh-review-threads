@@ -174,6 +174,23 @@ export const reviewSubmissionSchema = z
   .strict()
 export type ReviewSubmission = z.infer<typeof reviewSubmissionSchema>
 
+export const reviewBindingSchema = z
+  .object({
+    bindingId: id,
+    sourceWorkScopeKey: z.string().min(1),
+    targetRevisionScopeKey: z.string().min(1),
+    sourceReviewId: id,
+    targetReviewId: id,
+    patchDigest: z.string().min(1),
+    state: z.enum(['pending', 'merging', 'committed', 'failed']),
+    error: z.string().max(20_000).nullable(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    committedAt: timestamp.nullable(),
+  })
+  .strict()
+export type ReviewBinding = z.infer<typeof reviewBindingSchema>
+
 export const reviewThreadsDomain = defineDomain({
   name: 'review_threads',
   version: 1,
@@ -186,5 +203,6 @@ export const reviewThreadsDomain = defineDomain({
       reviewSubmissionSchema,
     ),
     threads: domainTable<string, ThreadRecord>(threadRecordSchema),
+    review_bindings: domainTable<string, ReviewBinding>(reviewBindingSchema),
   },
 })
