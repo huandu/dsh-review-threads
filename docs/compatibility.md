@@ -15,6 +15,8 @@
 - `ctx.tools` for model-facing thread tools.
 - `ctx.commands` for `/review`, diagnostics, and draft cleanup.
 - `ctx.locale` for English and Chinese tab copy.
+- `@deepseek-ai/dsh-util-workspace-path` is bundled into the Web Client build;
+  it is not expected in the DSH Client module table.
 - `ctx.systemPrompt` and the bundled skill for model guidance.
 
 ## Verification policy

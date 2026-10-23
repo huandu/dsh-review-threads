@@ -32,3 +32,5 @@
 - Add English and Chinese UI copy, keyboard/focus behavior, reduced-motion
   support, body-free diagnostics, and a session draft cleanup command.
 - Cover acceptance scenarios AC-01 through AC-13 in the E2E suite.
+- Bundle the workspace-path helper into the Web Client so DSH plugin loading
+  does not depend on an unmaterialized package module.

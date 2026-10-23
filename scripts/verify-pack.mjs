@@ -25,5 +25,11 @@ const pkg = JSON.parse(await readFile('package.json', 'utf8'))
 if (pkg.dependencies?.['@deepseek-ai/dsh'] !== undefined) {
   throw new Error('The package must not depend on the host metapackage')
 }
+const client = await readFile('lib/client.js', 'utf8')
+if (client.includes('require("@deepseek-ai/dsh-util-workspace-path")')) {
+  throw new Error(
+    'The browser bundle must include dsh-util-workspace-path instead of requiring an unmaterialized module',
+  )
+}
 
 console.log(`Pack check passed for ${pkg.name}@${pkg.version}.`)

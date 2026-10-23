@@ -8,6 +8,7 @@ const clientExternals = [
   'react/jsx-runtime',
   '@deepseek-ai/cordis',
 ]
+const bundledClientHelpers = new Set(['@deepseek-ai/dsh-util-workspace-path'])
 
 export default defineConfig([
   {
@@ -34,9 +35,12 @@ export default defineConfig([
     fixedExtension: false,
     sourcemap: true,
     deps: {
+      alwaysBundle: ['@deepseek-ai/dsh-util-workspace-path'],
+      onlyBundle: false,
       neverBundle: (specifier) =>
-        clientExternals.includes(specifier) ||
-        specifier.startsWith('@deepseek-ai/dsh-'),
+        !bundledClientHelpers.has(specifier) &&
+        (clientExternals.includes(specifier) ||
+          specifier.startsWith('@deepseek-ai/dsh-')),
     },
     outputOptions: {
       entryFileNames: 'client.js',
