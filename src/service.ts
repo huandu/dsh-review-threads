@@ -872,6 +872,38 @@ export class ReviewThreadService {
     )
   }
 
+  diagnostics(sessionId: SessionId): {
+    readonly scopes: number
+    readonly reviews: number
+    readonly threads: number
+    readonly submissions: number
+    readonly bindings: number
+    readonly sessionScopes: number
+    readonly sessionDrafts: number
+  } {
+    return {
+      scopes: [...this.scopes().entries()].length,
+      reviews: [...this.reviews().entries()].length,
+      threads: [...this.threads().entries()].length,
+      submissions: [...this.submissions().entries()].length,
+      bindings: [...this.bindings().entries()].length,
+      sessionScopes: [...this.scopes().entries()].filter(
+        ([, scope]) => scope.sessionId === sessionId,
+      ).length,
+      sessionDrafts: [...this.drafts().entries()].filter(
+        ([, draft]) => draft.sessionId === sessionId,
+      ).length,
+    }
+  }
+
+  async clearDraftsForSession(sessionId: SessionId): Promise<number> {
+    const drafts = [...this.drafts().entries()]
+      .map(([, draft]) => draft)
+      .filter((draft) => draft.sessionId === sessionId)
+    for (const draft of drafts) await this.cancelDraft(draft.draftId)
+    return drafts.length
+  }
+
   latestReviewForSession(sessionId: string): ReviewRecord | undefined {
     const scope = [...this.scopes().entries()]
       .map(([, value]) => value)

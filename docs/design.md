@@ -559,6 +559,11 @@ AI 行为约束：
 
 当阻塞 review 后代码已经修改，且没有活跃 draft 时，在同一位置显示独立 Approve 按钮。点击后打开同一提交对话框，默认 verdict 为 `approve`。用户添加任意 draft comment 后，独立 Approve 立即隐藏，改用普通 Submit review，默认 verdict 回到 `comment`。
 
+面板文案通过 DSH `ctx.locale` 注册为 `reviewThreads` namespace，提供中文与英文。
+交互控件使用原生 button/select/textarea，带可见 focus ring、状态 role、模态框
+Escape 关闭和 reduced-motion 降级。诊断命令只返回计数，不输出评论正文或仓库
+绝对路径；清理命令只取消当前会话的未提交 draft。
+
 ## 8. 通信与 API
 
 所有路由注册在 DSH Connection 的认证围栏内。

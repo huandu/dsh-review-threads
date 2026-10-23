@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
+import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { flattenDiffLines, type DiffLine } from '../diff-lines.js'
 import {
   ACTION_PATH,
@@ -20,6 +21,7 @@ import {
   type ReviewSummary,
   type ReviewThreadView,
 } from '../protocol.js'
+type Translate = PropsLocale<'reviewThreads'>['t']
 
 interface ReviewTabInfo {
   readonly tab: {
@@ -43,6 +45,7 @@ interface ReviewTabProps {
   readonly useSessions: <Selected>(
     selector: (state: SessionList) => Selected,
   ) => Selected
+  readonly t: Translate
 }
 
 type LoadState<T> =
@@ -90,7 +93,11 @@ function useFetchState<T>(
 }
 
 function status(text: string): ReactNode {
-  return <p className="rt-status">{text}</p>
+  return (
+    <p className="rt-status" role="status">
+      {text}
+    </p>
+  )
 }
 
 function unchanged(diff: ReviewFileDiff): boolean {
@@ -107,14 +114,15 @@ function snapshotRevision(
 
 function addressTitle(
   coordinates: NonNullable<ReturnType<typeof parseReviewAddress>>,
+  t: Translate,
 ): string {
   switch (coordinates.kind) {
     case 'turn':
-      return `Review · turn ${String(coordinates.turn)}`
+      return t('title.turn', { turn: String(coordinates.turn) })
     case 'work':
-      return 'Review · working tree'
+      return t('title.work')
     case 'revision':
-      return 'Review · revision range'
+      return t('title.revision')
   }
 }
 
@@ -138,6 +146,7 @@ const CSS = `
 .rt-primary{border:0;border-radius:6px;background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-on-brand);padding:6px 10px;cursor:pointer}
 .rt-secondary{border:1px solid var(--dsw-alias-border-l3);border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);padding:5px 9px;cursor:pointer}
 .rt-primary:disabled,.rt-secondary:disabled{opacity:.45;cursor:not-allowed}
+.rt-root button:focus-visible,.rt-root select:focus-visible,.rt-root input:focus-visible,.rt-root textarea:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
 .rt-error{color:var(--dsw-alias-state-error-primary);font-size:12px;padding:0 12px 8px}
 .rt-hunk{margin:0 0 14px}.rt-hunk-head{padding:4px 12px;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-markdown-code-block);white-space:pre}
 .rt-line{display:grid;grid-template-columns:3.5em 3.5em 1.2em 1.8em minmax(0,1fr);min-height:22px;line-height:22px;white-space:pre;font:var(--dsw-font-markdown-code-block)}
@@ -158,20 +167,21 @@ const CSS = `
 .rt-modal{width:min(520px,100%);border:1px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-l1);box-shadow:0 18px 50px color-mix(in srgb,var(--dsw-alias-bg-l0) 55%,transparent);padding:16px;display:flex;flex-direction:column;gap:12px}
 .rt-modal h2{margin:0;font-size:16px}.rt-modal-actions{display:flex;justify-content:flex-end;gap:8px}
 @media (max-width:700px){.rt-file-select{max-width:none;flex-basis:100%}.rt-line{grid-template-columns:2.8em 2.8em 1.2em 1.6em minmax(0,1fr)}.rt-thread{margin-left:10px;margin-right:10px}.rt-draft{grid-template-columns:1fr auto}.rt-draft .rt-select{grid-column:1/-1}.rt-draft .rt-input{grid-column:1/-1}}
+@media (prefers-reduced-motion:reduce){.rt-root *{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 `
 
-function decisionLabel(decision: ReviewDecision | null): string {
+function decisionLabel(decision: ReviewDecision | null, t: Translate): string {
   switch (decision) {
     case 'approve':
-      return 'Approved'
+      return t('decision.approve')
     case 'comment':
-      return 'Commented'
+      return t('decision.comment')
     case 'request_changes':
-      return 'Changes requested'
+      return t('decision.request_changes')
     case 'reject':
-      return 'Rejected'
+      return t('decision.reject')
     case null:
-      return 'No decision'
+      return t('decision.none')
   }
 }
 
@@ -184,6 +194,7 @@ interface ThreadPanelProps {
   readonly onStatus: (status: 'open' | 'resolved') => Promise<void>
   readonly onDeleteThread: () => Promise<void>
   readonly onClose: () => void
+  readonly t: Translate
 }
 
 function ThreadPanel(props: ThreadPanelProps): ReactNode {
@@ -198,9 +209,16 @@ function ThreadPanel(props: ThreadPanelProps): ReactNode {
     <div className="rt-thread">
       <div className="rt-thread-head">
         <span>
-          {props.line.side} line {props.line.line}
+          {props.t('line.label', {
+            side: props.t(
+              props.line.side === 'old' ? 'line.side.old' : 'line.side.new',
+            ),
+            line: String(props.line.line),
+          })}
         </span>
-        {props.thread?.status === 'resolved' && <span>Resolved</span>}
+        {props.thread?.status === 'resolved' && (
+          <span>{props.t('thread.resolved')}</span>
+        )}
         <span className="rt-spacer" />
         {props.thread !== undefined && (
           <>
@@ -214,7 +232,9 @@ function ThreadPanel(props: ThreadPanelProps): ReactNode {
                 )
               }}
             >
-              {props.thread.status === 'resolved' ? 'Reopen' : 'Resolve'}
+              {props.thread.status === 'resolved'
+                ? props.t('thread.reopen')
+                : props.t('thread.resolve')}
             </button>
             <button
               className="rt-link"
@@ -224,12 +244,12 @@ function ThreadPanel(props: ThreadPanelProps): ReactNode {
                 void props.onDeleteThread()
               }}
             >
-              Delete thread
+              {props.t('thread.delete')}
             </button>
           </>
         )}
         <button className="rt-link" type="button" onClick={props.onClose}>
-          Close
+          {props.t('thread.close')}
         </button>
       </div>
       {props.thread !== undefined && (
@@ -237,8 +257,10 @@ function ThreadPanel(props: ThreadPanelProps): ReactNode {
           {props.thread.comments.map((comment) => (
             <article className="rt-comment-item" key={comment.commentId}>
               <div className="rt-comment-author">
-                {comment.author === 'agent' ? 'AI' : 'You'}
-                {comment.edited ? ' · edited' : ''}
+                {comment.author === 'agent'
+                  ? props.t('comment.ai')
+                  : props.t('comment.you')}
+                {comment.edited ? ` · ${props.t('comment.edited')}` : ''}
               </div>
               <p className="rt-comment-body">{comment.body}</p>
               {comment.author === 'user' && (
@@ -251,7 +273,7 @@ function ThreadPanel(props: ThreadPanelProps): ReactNode {
                       void props.onDeleteComment(comment.commentId)
                     }}
                   >
-                    Delete
+                    {props.t('comment.delete')}
                   </button>
                 </div>
               )}
@@ -263,7 +285,9 @@ function ThreadPanel(props: ThreadPanelProps): ReactNode {
         <textarea
           className="rt-textarea"
           placeholder={
-            props.thread === undefined ? 'Add a review comment…' : 'Reply…'
+            props.thread === undefined
+              ? props.t('comment.placeholder.new')
+              : props.t('comment.placeholder.reply')
           }
           value={text}
           onChange={(event) => {
@@ -279,7 +303,9 @@ function ThreadPanel(props: ThreadPanelProps): ReactNode {
               void submit()
             }}
           >
-            {props.thread === undefined ? 'Add comment' : 'Reply'}
+            {props.thread === undefined
+              ? props.t('comment.add')
+              : props.t('comment.reply')}
           </button>
         </div>
       </div>
@@ -297,12 +323,11 @@ function diffBody(
   onDeleteComment: (threadId: string, commentId: string) => Promise<void>,
   onStatus: (threadId: string, status: 'open' | 'resolved') => Promise<void>,
   onDeleteThread: (threadId: string) => Promise<void>,
+  t: Translate,
 ): ReactNode {
-  if (diff.kind === 'binary')
-    return status('Binary file. Changes cannot be shown.')
-  if (diff.kind === 'oversized')
-    return status('File too large. Changes cannot be shown.')
-  if (diff.hunks.length === 0) return status('Both sides hold the same lines.')
+  if (diff.kind === 'binary') return status(t('diff.binary'))
+  if (diff.kind === 'oversized') return status(t('diff.oversized'))
+  if (diff.hunks.length === 0) return status(t('diff.same'))
   const lines = flattenDiffLines(diff.hunks)
   const hunks = [...new Set(lines.map((line) => line.hunkIndex))]
   return (
@@ -343,8 +368,23 @@ function diffBody(
                       data-count={
                         count === undefined ? undefined : String(count)
                       }
-                      title="Comment on this line"
-                      aria-label="Comment on this line"
+                      title={t('line.comment', {
+                        side: t(
+                          line.side === 'old'
+                            ? 'line.side.old'
+                            : 'line.side.new',
+                        ),
+                        line: String(line.line),
+                      })}
+                      aria-label={t('line.comment', {
+                        side: t(
+                          line.side === 'old'
+                            ? 'line.side.old'
+                            : 'line.side.new',
+                        ),
+                        line: String(line.line),
+                      })}
+                      aria-expanded={activeLine === key}
                       onClick={() => {
                         setActiveLine(activeLine === key ? undefined : key)
                       }}
@@ -377,6 +417,7 @@ function diffBody(
                       onClose={() => {
                         setActiveLine(undefined)
                       }}
+                      t={t}
                     />
                   )}
                 </div>
@@ -393,6 +434,7 @@ export function ReviewTab({
   useTabInfo,
   sessionId,
   useSessions,
+  t,
 }: ReviewTabProps): ReactNode {
   const { tab } = useTabInfo()
   const coordinates = useMemo(
@@ -409,6 +451,18 @@ export function ReviewTab({
     readonly summary: string
   } | null>(null)
   const [bindingDialog, setBindingDialog] = useState(false)
+  useEffect(() => {
+    if (dialog === null && !bindingDialog) return
+    const close = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      setDialog(null)
+      setBindingDialog(false)
+    }
+    window.addEventListener('keydown', close)
+    return () => {
+      window.removeEventListener('keydown', close)
+    }
+  }, [bindingDialog, dialog])
   useEffect(() => {
     const source = new EventSource(EVENTS_PATH)
     source.onmessage = () => {
@@ -500,7 +554,7 @@ export function ReviewTab({
   }
 
   if (coordinates === undefined) {
-    return <div className="rt-root">{status('Invalid review address.')}</div>
+    return <div className="rt-root">{status(t('state.invalid'))}</div>
   }
   const threads = review?.kind === 'ready' ? review.value.threads : []
   const draft = review?.kind === 'ready' ? review.value.draft : null
@@ -516,12 +570,12 @@ export function ReviewTab({
       <style>{CSS}</style>
       <div className="rt-head">
         {file === undefined ? (
-          <strong>{addressTitle(coordinates)}</strong>
+          <strong>{addressTitle(coordinates, t)}</strong>
         ) : (
           <select
             className="rt-file-select"
             value={index}
-            aria-label="Choose the file to review"
+            aria-label={t('file.choose')}
             onChange={(event) => {
               setSelected(Number(event.currentTarget.value))
               setActiveLine(undefined)
@@ -540,7 +594,7 @@ export function ReviewTab({
               <span className="rt-added">+{file.added}</span>
               <span className="rt-deleted">-{file.deleted}</span>
             </span>
-            <span className="rt-decision">{decisionLabel(decision)}</span>
+            <span className="rt-decision">{decisionLabel(decision, t)}</span>
             <button
               className="rt-open"
               type="button"
@@ -550,18 +604,22 @@ export function ReviewTab({
                 )
               }}
             >
-              Open file
+              {t('file.open')}
             </button>
           </>
         )}
       </div>
-      {error !== undefined && <div className="rt-error">{error}</div>}
+      {error !== undefined && (
+        <div className="rt-error" role="alert">
+          {error}
+        </div>
+      )}
       {bindingSuggestion !== null && bindingSuggestion.patchMatches && (
         <div className="rt-binding">
           <span className="rt-binding-copy">
-            A working-tree Review has the same patch as this revision range.
+            {t('binding.copy')}
             {bindingSuggestion.targetHasHistory
-              ? ' This revision Review already has discussion history and will be merged.'
+              ? ` ${t('binding.conflict')}`
               : ''}
           </span>
           <button
@@ -572,23 +630,35 @@ export function ReviewTab({
               setBindingDialog(true)
             }}
           >
-            Bind working review
+            {t('binding.action')}
           </button>
         </div>
       )}
       <div className="rt-body">
-        {summary?.kind === 'loading' && status('Reading changes…')}
+        {summary?.kind === 'loading' && status(t('state.changes.loading'))}
         {summary?.kind === 'error' &&
-          status(`Could not read changes: ${summary.message}`)}
-        {review?.kind === 'loading' && status('Reading review…')}
+          status(
+            t('state.changes.failed', {
+              message: summary.message,
+            }),
+          )}
+        {review?.kind === 'loading' && status(t('state.review.loading'))}
         {review?.kind === 'error' &&
-          status(`Could not read review: ${review.message}`)}
+          status(
+            t('state.review.failed', {
+              message: review.message,
+            }),
+          )}
         {summary?.kind === 'ready' &&
           file === undefined &&
-          status('This turn has no changed files.')}
-        {diff?.kind === 'loading' && status('Reading comparison…')}
+          status(t('state.changes.empty'))}
+        {diff?.kind === 'loading' && status(t('state.diff.loading'))}
         {diff?.kind === 'error' &&
-          status(`Could not read comparison: ${diff.message}`)}
+          status(
+            t('state.diff.failed', {
+              message: diff.message,
+            }),
+          )}
         {diff?.kind === 'ready' &&
           !unchanged(diff.value) &&
           diffBody(
@@ -631,6 +701,7 @@ export function ReviewTab({
               await act({ action: 'delete_thread', threadId })
               setActiveLine(undefined)
             },
+            t,
           )}
       </div>
       {draft !== null && (
@@ -638,7 +709,7 @@ export function ReviewTab({
           <select
             className="rt-select"
             value={draft.verdict}
-            aria-label="Review decision"
+            aria-label={t('draft.decision')}
             onChange={(event) => {
               void act({
                 action: 'update_draft',
@@ -646,14 +717,16 @@ export function ReviewTab({
               })
             }}
           >
-            <option value="comment">Comment</option>
-            <option value="approve">Approve</option>
-            <option value="request_changes">Request changes</option>
-            <option value="reject">Reject</option>
+            <option value="comment">{t('decision.comment')}</option>
+            <option value="approve">{t('decision.approve')}</option>
+            <option value="request_changes">
+              {t('decision.request_changes')}
+            </option>
+            <option value="reject">{t('decision.reject')}</option>
           </select>
           <input
             className="rt-input"
-            placeholder="Optional review summary"
+            placeholder={t('draft.summary')}
             defaultValue={draft.summaryText}
             onBlur={(event) => {
               if (event.currentTarget.value !== draft.summaryText) {
@@ -673,7 +746,7 @@ export function ReviewTab({
               void act({ action: 'cancel_draft' })
             }}
           >
-            Cancel
+            {t('draft.cancel')}
           </button>
           <button
             className="rt-primary"
@@ -683,13 +756,13 @@ export function ReviewTab({
               setDialog({ verdict: draft.verdict, summary: draft.summaryText })
             }}
           >
-            Submit review
+            {t('draft.submit')}
           </button>
         </div>
       )}
       {approvalAvailable && (
         <div className="rt-draft">
-          <span className="rt-decision">Blocking review awaiting approval</span>
+          <span className="rt-decision">{t('draft.blocking')}</span>
           <span />
           <span />
           <button
@@ -700,7 +773,7 @@ export function ReviewTab({
               setDialog({ verdict: 'approve', summary: '' })
             }}
           >
-            Approve
+            {t('draft.approve')}
           </button>
         </div>
       )}
@@ -710,9 +783,9 @@ export function ReviewTab({
             className="rt-modal"
             role="dialog"
             aria-modal="true"
-            aria-label="Submit review"
+            aria-label={t('submit.title')}
           >
-            <h2>Submit review</h2>
+            <h2>{t('submit.title')}</h2>
             <select
               className="rt-select"
               value={dialog.verdict}
@@ -723,14 +796,17 @@ export function ReviewTab({
                 })
               }}
             >
-              <option value="comment">Comment</option>
-              <option value="approve">Approve</option>
-              <option value="request_changes">Request changes</option>
-              <option value="reject">Reject</option>
+              <option value="comment">{t('decision.comment')}</option>
+              <option value="approve">{t('decision.approve')}</option>
+              <option value="request_changes">
+                {t('decision.request_changes')}
+              </option>
+              <option value="reject">{t('decision.reject')}</option>
             </select>
             <textarea
               className="rt-textarea"
-              placeholder="Optional overall summary"
+              autoFocus
+              placeholder={t('submit.summary')}
               value={dialog.summary}
               onChange={(event) => {
                 setDialog({
@@ -743,11 +819,12 @@ export function ReviewTab({
               <button
                 className="rt-secondary"
                 type="button"
+                autoFocus
                 onClick={() => {
                   setDialog(null)
                 }}
               >
-                Cancel
+                {t('submit.cancel')}
               </button>
               <button
                 className="rt-primary"
@@ -764,7 +841,7 @@ export function ReviewTab({
                   })()
                 }}
               >
-                Submit
+                {t('submit.action')}
               </button>
             </div>
           </div>
@@ -776,20 +853,12 @@ export function ReviewTab({
             className="rt-modal"
             role="dialog"
             aria-modal="true"
-            aria-label="Bind working review"
+            aria-label={t('binding.title')}
           >
-            <h2>Bind working review?</h2>
-            <p>
-              This revision range will point at the working-tree Review, so its
-              Review ID stays unchanged. Thread, comment, and submission IDs are
-              preserved, and both scopes remain aliases of the same Review.
-            </p>
+            <h2>{t('binding.title')}</h2>
+            <p>{t('binding.description')}</p>
             {bindingSuggestion.targetHasHistory && (
-              <p className="rt-binding-warning">
-                Both Reviews contain history. The working Review will merge into
-                the revision Review open here; all thread and submission IDs are
-                retained, with duplicate line threads combined.
-              </p>
+              <p className="rt-binding-warning">{t('binding.merge')}</p>
             )}
             <div className="rt-modal-actions">
               <button
@@ -799,7 +868,7 @@ export function ReviewTab({
                   setBindingDialog(false)
                 }}
               >
-                Cancel
+                {t('binding.cancel')}
               </button>
               <button
                 className="rt-primary"
@@ -815,7 +884,7 @@ export function ReviewTab({
                   })()
                 }}
               >
-                Bind and merge
+                {t('binding.confirm')}
               </button>
             </div>
           </div>

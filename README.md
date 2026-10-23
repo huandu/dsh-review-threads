@@ -19,6 +19,15 @@ release until version `0.1.0` is published.
 - Node.js 22.18 or newer
 - Git for committed revision reviews
 
+## Install
+
+```bash
+dsh plugin --profile web add dsh-review-threads
+```
+
+Restart the profile after installation. Removing the plugin restores the
+official Review tab; review data stays under the profile's DSH storage.
+
 ## Review commands
 
 - `/review` opens the current working-tree changes, including untracked files.
@@ -27,6 +36,8 @@ release until version `0.1.0` is published.
 - Append `-- <paths...>` to limit either comparison to repository paths.
 - Use `/review bind <base>..<head>` to open a range whose patch matches the
   current session's working Review; confirm the bind in the panel.
+- `/review-diagnostics` reports storage counts without comment bodies.
+- `/review-clear-drafts` discards unsubmitted drafts in the current session.
 
 The command only opens the Review panel. It does not send a conversation
 message or start an AI turn.

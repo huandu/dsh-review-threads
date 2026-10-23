@@ -175,4 +175,32 @@ describe('ReviewThreadService', () => {
     })
     expect(service.aiThreads(scope.reviewId)).toHaveLength(1)
   })
+
+  it('reports body-free diagnostics and clears only session drafts', async () => {
+    const { service } = createMemoryService()
+    const session = sessionId()
+    const scope = await service.resolveTurn({
+      sessionId: session,
+      eventSeq: 5,
+      turn: 2,
+      patchDigest: 'patch-1',
+    })
+    await service.addUserComment({
+      reviewId: scope.reviewId,
+      sessionId: session,
+      turn: 2,
+      anchor,
+      body: 'Draft body must not appear in diagnostics.',
+    })
+    const diagnostics = service.diagnostics(session)
+    expect(diagnostics).toMatchObject({
+      scopes: 1,
+      reviews: 1,
+      sessionScopes: 1,
+      sessionDrafts: 1,
+    })
+    expect(JSON.stringify(diagnostics)).not.toContain('Draft body')
+    expect(await service.clearDraftsForSession(session)).toBe(1)
+    expect(service.diagnostics(session).sessionDrafts).toBe(0)
+  })
 })

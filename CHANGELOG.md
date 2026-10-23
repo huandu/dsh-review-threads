@@ -29,3 +29,6 @@
 - Detect matching working and revision patches, require explicit confirmation,
   and bind them without changing Review, Thread, Comment, or Submission
   identities. Existing revision history merges with rollback.
+- Add English and Chinese UI copy, keyboard/focus behavior, reduced-motion
+  support, body-free diagnostics, and a session draft cleanup command.
+- Cover acceptance scenarios AC-01 through AC-13 in the E2E suite.

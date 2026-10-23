@@ -13,7 +13,8 @@
 - `ctx.storageDomain` for Review, Thread, draft, and submission persistence.
 - `ctx.connection.fetch` for authenticated HTTP and event routes.
 - `ctx.tools` for model-facing thread tools.
-- `ctx.commands` for `/review`.
+- `ctx.commands` for `/review`, diagnostics, and draft cleanup.
+- `ctx.locale` for English and Chinese tab copy.
 - `ctx.systemPrompt` and the bundled skill for model guidance.
 
 ## Verification policy

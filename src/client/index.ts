@@ -1,4 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
@@ -7,10 +8,24 @@ import { ReviewTab } from './ReviewTab.js'
 import { reviewAddressFromCommand } from './command-open.js'
 import { reviewDefinition } from './review-definition.js'
 import { revisionReviewAddress, workReviewAddress } from '../protocol.js'
+import { en, zh, type ReviewThreadsKey } from './locales.js'
 
-export const inject = ['slots', 'sidebarRight', 'sidebarRightTabs']
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap {
+    reviewThreads: ReviewThreadsKey
+  }
+}
+
+const NS = 'reviewThreads'
+
+export const inject = ['locale', 'slots', 'sidebarRight', 'sidebarRightTabs']
 
 export function apply(ctx: Context): void {
+  ctx.effect(
+    () => ctx.locale.register(NS, { en, zh }),
+    'dsh-review-threads: dictionaries',
+  )
+  const t = ctx.locale.bind(NS)
   ctx.on('command/executed', (_sessionId, name, result) => {
     const address = reviewAddressFromCommand(name, result)
     if (address === undefined) return
@@ -20,7 +35,7 @@ export function apply(ctx: Context): void {
         : revisionReviewAddress(address.scopeKey),
     )
   })
-  const definition = reviewDefinition()
+  const definition = reviewDefinition(t)
   ctx.effect(
     () => ctx.sidebarRightTabs.register(definition),
     'dsh-review-threads: review tab type',
@@ -32,6 +47,7 @@ export function apply(ctx: Context): void {
           {
             name: 'sidebar.right.pane.tab',
             key: definition.id,
+            locale: NS,
           },
           ReviewTab,
         ),

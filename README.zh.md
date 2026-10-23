@@ -16,6 +16,15 @@ Review 后才对 AI 可见。AI 可以立即添加评论，但不能删除评论
 - Node.js 22.18 或更新版本
 - 已提交 revision review 需要 Git
 
+## 安装
+
+```bash
+dsh plugin --profile web add dsh-review-threads
+```
+
+安装后重启 profile。卸载插件会恢复官方 Review tab，评审数据仍保留在 profile
+的 DSH storage 中。
+
 ## Review 命令
 
 - `/review` 打开当前工作区未提交的变更，包括未跟踪文件。
@@ -24,6 +33,8 @@ Review 后才对 AI 可见。AI 可以立即添加评论，但不能删除评论
 - 两种比较都可以追加 `-- <paths...>` 限定仓库路径。
 - 使用 `/review bind <base>..<head>` 检查 revision 是否与当前会话的 working
   Review 补丁一致，并在面板中确认绑定。
+- `/review-diagnostics` 查看不包含评论正文的本地存储计数。
+- `/review-clear-drafts` 丢弃当前会话所有未提交 draft。
 
 该命令只打开 Review 面板，不发送对话消息，也不会启动 AI 回合。
 

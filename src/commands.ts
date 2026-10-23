@@ -70,4 +70,25 @@ export function registerReviewCommands(
       }
     },
   })
+  ctx.commands.register({
+    name: 'review-diagnostics',
+    description: 'Show local Review storage counts without comment bodies',
+    recordInput: false,
+    handler: ({ agent }) => ({
+      kind: 'success',
+      text: JSON.stringify(service.diagnostics(agent.session.id)),
+    }),
+  })
+  ctx.commands.register({
+    name: 'review-clear-drafts',
+    description: 'Discard unsubmitted Review drafts in the current session',
+    recordInput: false,
+    handler: async ({ agent }) => {
+      const count = await service.clearDraftsForSession(agent.session.id)
+      return {
+        kind: 'success',
+        text: `Discarded ${String(count)} unsubmitted Review draft${count === 1 ? '' : 's'}.`,
+      }
+    },
+  })
 }
