@@ -11,3 +11,5 @@
 - Model Reviews as persistent aggregates with immutable submissions.
 - Add line-anchored Thread and Comment persistence, draft visibility, user and
   AI authorship rules, and body-free deletion tombstones.
+- Add the in-panel review thread UI, line comment controls, reply composer,
+  review draft controls, and permission-aware thread actions.

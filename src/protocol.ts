@@ -8,6 +8,8 @@ export const REVIEW_ID = 'dsh-review-threads'
 export const REVIEW_ADDRESS_PREFIX = 'dsh-resource://changes-review/session/'
 export const SUMMARY_PATH = '/api/plugins/dsh-review-threads/changes.summary'
 export const DIFF_PATH = '/api/plugins/dsh-review-threads/changes.diff'
+export const REVIEW_STATE_PATH = '/api/plugins/dsh-review-threads/review'
+export const ACTION_PATH = '/api/plugins/dsh-review-threads/action'
 
 export interface ReviewAddress {
   readonly sessionId: string
@@ -34,6 +36,52 @@ export interface ReviewFileSummary {
 
 export type ReviewFileDiff = WorkspaceFileDiff
 export type ReviewDiffHunk = WorkspaceDiffHunk
+
+export type ReviewDecision =
+  'approve' | 'comment' | 'request_changes' | 'reject'
+export type ReviewAuthor = 'user' | 'agent'
+export type ReviewThreadStatus = 'open' | 'resolved' | 'outdated'
+
+export interface ReviewCommentView {
+  readonly commentId: string
+  readonly author: ReviewAuthor
+  readonly body: string
+  readonly edited: boolean
+  readonly createdAt: string
+}
+
+export interface ReviewAnchorView {
+  readonly path: string
+  readonly side: 'old' | 'new'
+  readonly line: number
+  readonly startLine: number
+}
+
+export interface ReviewThreadView {
+  readonly threadId: string
+  readonly anchor: ReviewAnchorView
+  readonly status: ReviewThreadStatus
+  readonly revision: number
+  readonly createdBy: ReviewAuthor
+  readonly comments: readonly ReviewCommentView[]
+}
+
+export interface ReviewDraftView {
+  readonly draftId: string
+  readonly turn: number
+  readonly verdict: ReviewDecision
+  readonly summaryText: string
+  readonly threadIds: readonly string[]
+}
+
+export interface ReviewState {
+  readonly reviewId: string
+  readonly scopeKey: string
+  readonly currentDecision: ReviewDecision | null
+  readonly currentTurn: number
+  readonly threads: readonly ReviewThreadView[]
+  readonly draft: ReviewDraftView | null
+}
 
 export function parseReviewAddress(address: string): ReviewAddress | undefined {
   if (!address.startsWith(REVIEW_ADDRESS_PREFIX)) return undefined
@@ -66,4 +114,16 @@ export function summaryUrl(sessionId: string, seq: number): string {
 
 export function diffUrl(sessionId: string, seq: number, index: number): string {
   return `${DIFF_PATH}?${new URLSearchParams({ sessionId, seq: String(seq), index: String(index) }).toString()}`
+}
+
+export function reviewStateUrl(
+  sessionId: string,
+  seq: number,
+  turn: number,
+): string {
+  return `${REVIEW_STATE_PATH}?${new URLSearchParams({
+    sessionId,
+    seq: String(seq),
+    turn: String(turn),
+  }).toString()}`
 }

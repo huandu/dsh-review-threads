@@ -194,6 +194,15 @@ export class ReviewThreadService {
     return this.drafts().get(draftId)
   }
 
+  draftFor(reviewId: string, sessionId: string): ReviewDraft | undefined {
+    return [...this.drafts().entries()]
+      .map(([, draft]) => draft)
+      .filter(
+        (draft) => draft.reviewId === reviewId && draft.sessionId === sessionId,
+      )
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
+  }
+
   getSubmission(submissionId: string): ReviewSubmission | undefined {
     return this.submissions().get(submissionId)
   }
@@ -203,6 +212,17 @@ export class ReviewThreadService {
       .map(([, thread]) => thread)
       .filter((thread) => thread.reviewId === reviewId)
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+  }
+
+  userThreads(reviewId: string): readonly ThreadRecord[] {
+    return this.threadsForReview(reviewId)
+      .filter((thread) => thread.deletedAt === null)
+      .map((thread) => ({
+        ...thread,
+        comments: thread.comments.filter(
+          (comment) => comment.deletedAt === null,
+        ),
+      }))
   }
 
   private threadForAnchor(
@@ -267,6 +287,48 @@ export class ReviewThreadService {
     }
     await this.drafts().put(draftId, next)
     return next
+  }
+
+  async cancelDraft(draftId: string): Promise<boolean> {
+    const draft = this.drafts().get(draftId)
+    if (draft === undefined) return false
+    for (const threadId of draft.threadIds) {
+      const thread = this.threads().get(threadId)
+      if (thread === undefined) continue
+      const comments = thread.comments
+        .filter(
+          (comment) =>
+            !(
+              comment.draftId === draft.draftId &&
+              comment.publishedRevision === null
+            ),
+        )
+        .map((comment) =>
+          comment.draftId === draft.draftId && comment.publishedBody !== null
+            ? {
+                ...comment,
+                body: comment.publishedBody,
+                deletedAt: comment.publishedDeletedAt,
+                updatedAt: new Date().toISOString(),
+              }
+            : comment,
+        )
+      if (thread.publishedRevision === null || comments.length === 0) {
+        await this.threads().delete(thread.threadId)
+        continue
+      }
+      await this.threads().put(thread.threadId, {
+        ...thread,
+        status: thread.publishedStatus,
+        deletedAt: thread.publishedDeletedAt,
+        pendingDraftIds: thread.pendingDraftIds.filter(
+          (id) => id !== draft.draftId,
+        ),
+        comments,
+        updatedAt: new Date().toISOString(),
+      })
+    }
+    return this.drafts().delete(draftId)
   }
 
   private addDraftThread(draft: ReviewDraft, threadId: string): ReviewDraft {
