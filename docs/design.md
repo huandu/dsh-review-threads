@@ -555,22 +555,25 @@ AI 行为约束：
 
 所有路由注册在 DSH Connection 的认证围栏内。
 
-| 方法   | 路由                                                          | 用途                                            |
-| ------ | ------------------------------------------------------------- | ----------------------------------------------- |
-| GET    | `/plugins/dsh-review-threads/scopes/:scopeKey`                | scope 摘要                                      |
-| GET    | `/plugins/dsh-review-threads/reviews/:reviewId`               | Review 聚合、thread、当前决策和 submission 摘要 |
-| GET    | `/plugins/dsh-review-threads/scopes/:scopeKey/threads`        | thread 快照                                     |
-| POST   | `/plugins/dsh-review-threads/threads`                         | 用户新建 thread/comment                         |
-| PATCH  | `/plugins/dsh-review-threads/threads/:id`                     | 用户编辑、完成、重新打开                        |
-| DELETE | `/plugins/dsh-review-threads/threads/:id`                     | 用户删除 thread                                 |
-| DELETE | `/plugins/dsh-review-threads/threads/:id/comments/:commentId` | 用户删除自己的评论                              |
-| POST   | `/plugins/dsh-review-threads/reviews/:id/drafts`              | 开始 review draft                               |
-| PATCH  | `/plugins/dsh-review-threads/reviews/:id/drafts/:draftId`     | 修改 draft 中的 verdict/总结/操作               |
-| DELETE | `/plugins/dsh-review-threads/reviews/:id/drafts/:draftId`     | 取消 review draft                               |
-| POST   | `/plugins/dsh-review-threads/reviews/:id/submissions`         | 提交 ReviewSubmission                           |
-| GET    | `/plugins/dsh-review-threads/events?scopeKey=...&after=...`   | SSE 增量                                        |
+| 方法 | 路由                                               | 用途                                            |
+| ---- | -------------------------------------------------- | ----------------------------------------------- |
+| GET  | `/api/plugins/dsh-review-threads/changes.summary`  | 官方 turn scope 文件摘要                        |
+| GET  | `/api/plugins/dsh-review-threads/changes.diff`     | 官方 turn scope 单文件 diff                     |
+| GET  | `/api/plugins/dsh-review-threads/revision.summary` | working 或 revision scope 文件摘要              |
+| GET  | `/api/plugins/dsh-review-threads/revision.diff`    | working 或 revision scope 单文件 diff           |
+| GET  | `/api/plugins/dsh-review-threads/review`           | Review 聚合、thread、draft、决策和 scope 元数据 |
+| POST | `/api/plugins/dsh-review-threads/action`           | thread/comment/draft/submit 操作                |
+| GET  | `/api/plugins/dsh-review-threads/events`           | SSE 增量                                        |
 
 服务端对 `author` 不信任请求体，用户请求一律记为 owner user；AI 请求只通过模型工具进入。
+
+`/review` 命令在 Host 侧解析参数并解析 Git commit OID，再把
+`dsh-resource://changes-review/work/...` 或
+`dsh-resource://changes-review/revision/...` 地址交给 Client 自动打开。
+命令结果本身是轻量协议文本，不启动对话回合。working scope 每次刷新都会计算
+patch digest，并以当前 diff 行为候选重新锚定开放的 thread；无法唯一恢复的
+thread 标为 outdated，正文与历史不删除。revision scope 以解析后的 OID 和
+diff options 生成稳定 key，因此不同会话打开同一区间会落到同一个 Review。
 
 ## 9. Commit 绑定
 

@@ -9,8 +9,17 @@ export function reviewDefinition(): SidebarRightTabDefinition {
     priority: 'extension',
     canOpen: (address) => parseReviewAddress(address) !== undefined,
     title: (address) => {
-      const turn = parseReviewAddress(address)?.turn
-      return turn === undefined ? 'Review' : `Review · turn ${String(turn)}`
+      const parsed = parseReviewAddress(address)
+      switch (parsed?.kind) {
+        case 'turn':
+          return `Review · turn ${String(parsed.turn)}`
+        case 'work':
+          return 'Review · working tree'
+        case 'revision':
+          return 'Review · revision range'
+        case undefined:
+          return 'Review'
+      }
     },
   }
 }

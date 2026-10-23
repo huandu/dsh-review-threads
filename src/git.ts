@@ -8,6 +8,7 @@ const GRACE_MS = 2_000
 export interface GitResult {
   readonly stdout: string
   readonly exitCode: number | null
+  readonly truncated: boolean
 }
 
 export class GitRunner {
@@ -45,8 +46,12 @@ export class GitRunner {
       },
     })
     const outcome = await handle.done
-    const stdout = handle.collected.stdout?.readFrom(0).text ?? ''
-    return { stdout, exitCode: outcome.exitCode }
+    const output = handle.collected.stdout?.readFrom(0)
+    return {
+      stdout: output?.text ?? '',
+      exitCode: outcome.exitCode,
+      truncated: output?.lossy ?? false,
+    }
   }
 
   async require(cwd: string, args: readonly string[]): Promise<string> {

@@ -19,6 +19,16 @@ release until version `0.1.0` is published.
 - Node.js 22.18 or newer
 - Git for committed revision reviews
 
+## Review commands
+
+- `/review` opens the current working-tree changes, including untracked files.
+- `/review <base>..<head>` opens a committed revision range. Use
+  `/review <base>...<head>` for merge-base comparison.
+- Append `-- <paths...>` to limit either comparison to repository paths.
+
+The command only opens the Review panel. It does not send a conversation
+message or start an AI turn.
+
 ## Development
 
 ```bash

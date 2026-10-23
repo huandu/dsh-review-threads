@@ -7,6 +7,8 @@ import {
   ACTION_PATH,
   DIFF_PATH,
   EVENTS_PATH,
+  REVISION_DIFF_PATH,
+  REVISION_SUMMARY_PATH,
   REVIEW_STATE_PATH,
   SUMMARY_PATH,
   type ReviewState,
@@ -86,57 +88,123 @@ async function diffHandler(ctx: Context, request: Request): Promise<Response> {
   }
 }
 
+async function revisionSummaryHandler(
+  ctx: Context,
+  request: Request,
+): Promise<Response> {
+  const scopeKey = new URL(request.url).searchParams.get('scopeKey')
+  if (
+    scopeKey === null ||
+    (!scopeKey.startsWith('rev:') && !scopeKey.startsWith('work:'))
+  ) {
+    return badRequest('Invalid diff scope.')
+  }
+  try {
+    const scope = ctx.reviewThreads.get(scopeKey)
+    return json(
+      scope?.kind === 'work'
+        ? await ctx.reviewThreads.workingSummary(scopeKey, request.signal)
+        : await ctx.reviewThreads.revisionSummary(scopeKey, request.signal),
+    )
+  } catch {
+    request.signal.throwIfAborted()
+    return json({ error: 'revision-unavailable' }, 404)
+  }
+}
+
+async function revisionDiffHandler(
+  ctx: Context,
+  request: Request,
+): Promise<Response> {
+  const query = new URL(request.url).searchParams
+  const scopeKey = query.get('scopeKey')
+  const index = coordinate(query.get('index'))
+  if (
+    scopeKey === null ||
+    (!scopeKey.startsWith('rev:') && !scopeKey.startsWith('work:')) ||
+    index === undefined
+  ) {
+    return badRequest('Invalid diff comparison coordinates.')
+  }
+  try {
+    const scope = ctx.reviewThreads.get(scopeKey)
+    const diff =
+      scope?.kind === 'work'
+        ? await ctx.reviewThreads.workingDiff(scopeKey, index, request.signal)
+        : await ctx.reviewThreads.revisionDiff(scopeKey, index, request.signal)
+    return diff === undefined ? json({ error: 'not-found' }, 404) : json(diff)
+  } catch {
+    request.signal.throwIfAborted()
+    return json({ error: 'revision-unavailable' }, 404)
+  }
+}
+
 async function reviewStateHandler(
   ctx: Context,
   request: Request,
 ): Promise<Response> {
   const query = new URL(request.url).searchParams
+  const scopeKey = query.get('scopeKey')
   const sessionId = query.get('sessionId')
   const seq = coordinate(query.get('seq'))
   const turn = coordinate(query.get('turn'))
-  if (
-    sessionId === null ||
-    sessionId.length === 0 ||
-    seq === undefined ||
-    turn === undefined
-  ) {
+  if (sessionId === null || sessionId.length === 0) {
     return badRequest('Invalid review coordinates.')
   }
-  const summary = ctx.workspaceChanges.summary(sessionId as SessionId, seq)
-  if (summary === undefined) return json({ error: 'not-found' }, 404)
-  const snapshot = summary.snapshot
-  const diffs =
-    snapshot === undefined
-      ? await Promise.all(
-          summary.files.map((_, index) =>
-            ctx.workspaceChanges.diff(
-              sessionId as SessionId,
-              seq,
-              index,
-              request.signal,
+  let scope
+  if (scopeKey !== null) {
+    if (!scopeKey.startsWith('rev:') && !scopeKey.startsWith('work:')) {
+      return badRequest('Invalid review scope.')
+    }
+    scope = ctx.reviewThreads.get(scopeKey)
+    if (scope === undefined) return json({ error: 'not-found' }, 404)
+    if (scope.kind === 'work') {
+      if (scope.sessionId !== sessionId) {
+        return badRequest('Working review belongs to another session.')
+      }
+      await ctx.reviewThreads.refreshWorking(scopeKey, request.signal)
+    }
+  } else {
+    if (seq === undefined || turn === undefined) {
+      return badRequest('Invalid turn review coordinates.')
+    }
+    const summary = ctx.workspaceChanges.summary(sessionId as SessionId, seq)
+    if (summary === undefined) return json({ error: 'not-found' }, 404)
+    const snapshot = summary.snapshot
+    const diffs =
+      snapshot === undefined
+        ? await Promise.all(
+            summary.files.map((_, index) =>
+              ctx.workspaceChanges.diff(
+                sessionId as SessionId,
+                seq,
+                index,
+                request.signal,
+              ),
             ),
-          ),
-        )
-      : undefined
-  const patchDigest = hashJson({
-    summary: {
-      turn: summary.turn,
-      files: summary.files,
-      total: summary.total,
-      added: summary.added,
-      deleted: summary.deleted,
-      snapshot,
-    },
-    diffs,
-  })
-  const scope = await ctx.reviewThreads.resolveTurn({
-    sessionId: sessionId as SessionId,
-    eventSeq: seq,
-    turn,
-    patchDigest,
-  })
+          )
+        : undefined
+    const patchDigest = hashJson({
+      summary: {
+        turn: summary.turn,
+        files: summary.files,
+        total: summary.total,
+        added: summary.added,
+        deleted: summary.deleted,
+        snapshot,
+      },
+      diffs,
+    })
+    scope = await ctx.reviewThreads.resolveTurn({
+      sessionId: sessionId as SessionId,
+      eventSeq: seq,
+      turn,
+      patchDigest,
+    })
+  }
   const review = ctx.reviewThreads.getReview(scope.reviewId)
   if (review === undefined) return json({ error: 'review-unavailable' }, 500)
+  const currentTurn = turn ?? 0
   const draft = ctx.reviewThreads.draftFor(scope.reviewId, sessionId)
   const state: ReviewState = {
     reviewId: review.reviewId,
@@ -146,7 +214,14 @@ async function reviewStateHandler(
       review.reviewId,
       sessionId,
     ),
-    currentTurn: turn,
+    currentTurn,
+    scope: {
+      kind: scope.kind,
+      repoIdentity: scope.repoIdentity,
+      baseOid: scope.baseOid,
+      headOid: scope.headOid,
+    },
+    bindingSuggestion: null,
     threads: ctx.reviewThreads
       .userThreads(review.reviewId)
       .map((thread): ReviewThreadView => ({
@@ -246,6 +321,10 @@ async function actionHandler(
     const turn = number(body['turn'], 'turn')
     const review = ctx.reviewThreads.getReview(reviewId)
     if (review === undefined) return json({ error: 'not-found' }, 404)
+    const activeScope = ctx.reviewThreads.get(review.activeScopeKey)
+    if (activeScope?.kind === 'work' && activeScope.sessionId !== sessionId) {
+      return conflict('Working review belongs to another session')
+    }
     const approvalAvailable = ctx.reviewThreads.approvalAvailable(
       reviewId,
       sessionId,
@@ -380,6 +459,18 @@ export function registerReviewRoutes(
     methods: ['GET'],
     requestBody: 'buffered',
     fetch: async (request) => diffHandler(ctx, request),
+  })
+  ctx.connection.fetch.register({
+    path: REVISION_SUMMARY_PATH,
+    methods: ['GET'],
+    requestBody: 'buffered',
+    fetch: async (request) => revisionSummaryHandler(ctx, request),
+  })
+  ctx.connection.fetch.register({
+    path: REVISION_DIFF_PATH,
+    methods: ['GET'],
+    requestBody: 'buffered',
+    fetch: async (request) => revisionDiffHandler(ctx, request),
   })
   ctx.connection.fetch.register({
     path: REVIEW_STATE_PATH,

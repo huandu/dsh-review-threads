@@ -3,7 +3,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { randomUUID } from 'node:crypto'
-import { createAnchor, type AnchorInput } from './anchor.js'
+import { createAnchor, reanchor, type AnchorInput } from './anchor.js'
 import {
   reviewThreadsDomain,
   type CommentRecord,
@@ -18,9 +18,18 @@ import {
   type ThreadStatus,
 } from './domain.js'
 import { resolveRepositoryIdentity, type GitRunner } from './git.js'
+import { flattenDiffLines } from './diff-lines.js'
 import { renderReviewSubmission } from './prompt.js'
 import {
+  EMPTY_TREE_OID,
+  revisionFileDiff,
+  revisionSummary,
+  workingFileDiff,
+  workingSummary,
+} from './revision.js'
+import {
   DEFAULT_REVISION_DIFF_SPEC,
+  hashJson,
   normalizeDiffSpec,
   revisionScopeKey,
   turnScopeKey,
@@ -40,13 +49,16 @@ export interface TurnScopeInput {
 export interface WorkingScopeInput {
   readonly sessionId: SessionId
   readonly cwd: string
+  readonly diffSpec?: RevisionDiffSpec
 }
 
 export interface RevisionScopeInput {
   readonly repoIdentity: string
+  readonly repoRoot: string
   readonly baseOid: string
   readonly headOid: string
   readonly diffSpec?: RevisionDiffSpec
+  readonly patchDigest?: string
 }
 
 export class ReviewThreadService {
@@ -125,6 +137,7 @@ export class ReviewThreadService {
       scopeKey: key,
       kind: 'turn',
       repoIdentity: null,
+      repoRoot: null,
       sessionId: input.sessionId,
       eventSeq: input.eventSeq,
       turn: input.turn,
@@ -132,6 +145,8 @@ export class ReviewThreadService {
       headOid: null,
       patchDigest: input.patchDigest,
       diffSpecDigest: null,
+      diffSpec: null,
+      mergeBase: null,
       createdAt: now,
       updatedAt: now,
     })
@@ -141,20 +156,27 @@ export class ReviewThreadService {
     const repo = await resolveRepositoryIdentity(this.git, input.cwd)
     if (repo === undefined)
       throw new Error('The working directory is not a Git repository')
-    const baseOid = repo.headOid ?? 'EMPTY_TREE'
+    const baseOid = repo.headOid ?? EMPTY_TREE_OID
     const key = workScopeKey(repo.identity, input.sessionId, baseOid)
+    const diffSpec = input.diffSpec ?? {
+      ...DEFAULT_REVISION_DIFF_SPEC,
+      mergeBase: false,
+    }
     const now = new Date().toISOString()
     return this.createScope({
       scopeKey: key,
       kind: 'work',
       repoIdentity: repo.identity,
+      repoRoot: repo.root,
       sessionId: input.sessionId,
       eventSeq: null,
       turn: null,
       baseOid,
       headOid: null,
       patchDigest: null,
-      diffSpecDigest: null,
+      diffSpecDigest: normalizeDiffSpec(diffSpec),
+      diffSpec: { ...diffSpec, pathFilters: [...diffSpec.pathFilters] },
+      mergeBase: false,
       createdAt: now,
       updatedAt: now,
     })
@@ -173,13 +195,16 @@ export class ReviewThreadService {
       scopeKey: key,
       kind: 'rev',
       repoIdentity: input.repoIdentity,
+      repoRoot: input.repoRoot,
       sessionId: null,
       eventSeq: null,
       turn: null,
       baseOid: input.baseOid,
       headOid: input.headOid,
-      patchDigest: null,
+      patchDigest: input.patchDigest ?? null,
       diffSpecDigest: normalizeDiffSpec(diffSpec),
+      diffSpec: { ...diffSpec, pathFilters: [...diffSpec.pathFilters] },
+      mergeBase: diffSpec.mergeBase,
       createdAt: now,
       updatedAt: now,
     })
@@ -187,6 +212,281 @@ export class ReviewThreadService {
 
   getReview(reviewId: string): ReviewRecord | undefined {
     return this.reviews().get(reviewId)
+  }
+
+  async prepareRevision(
+    sessionId: SessionId,
+    range: string,
+    pathFilters: readonly string[] = [],
+    signal: AbortSignal = new AbortController().signal,
+  ): Promise<ScopeRecord> {
+    const cwd = this.ctx.sessions.get(sessionId)?.header.cwd
+    if (cwd === undefined)
+      throw new Error('Session working directory is unavailable')
+    const match = /^\s*(\S+?)(\.\.\.?)(\S+)\s*$/.exec(range)
+    if (match === null) throw new Error('Expected a base..head revision range')
+    const baseRef = match[1]
+    const separator = match[2]
+    const headRef = match[3]
+    if (
+      baseRef === undefined ||
+      separator === undefined ||
+      headRef === undefined
+    ) {
+      throw new Error('Expected a base..head revision range')
+    }
+    const repo = await resolveRepositoryIdentity(this.git, cwd)
+    if (repo === undefined)
+      throw new Error('The working directory is not a Git repository')
+    for (const revision of [baseRef, headRef]) {
+      if (revision.startsWith('-') || /[\0\r\n]/u.test(revision)) {
+        throw new Error('Invalid revision name')
+      }
+    }
+    const baseOid = await this.git.require(repo.root, [
+      'rev-parse',
+      '--verify',
+      '--end-of-options',
+      `${baseRef}^{commit}`,
+    ])
+    const headOid = await this.git.require(repo.root, [
+      'rev-parse',
+      '--verify',
+      '--end-of-options',
+      `${headRef}^{commit}`,
+    ])
+    const diffSpec: RevisionDiffSpec = {
+      ...DEFAULT_REVISION_DIFF_SPEC,
+      mergeBase: separator === '...',
+      pathFilters,
+    }
+    const summary = await revisionSummary(
+      this.git,
+      repo.root,
+      baseOid,
+      headOid,
+      diffSpec,
+      signal,
+    )
+    const diffs = await Promise.all(
+      summary.files.map((file, index) =>
+        revisionFileDiff(
+          this.git,
+          repo.root,
+          baseOid,
+          headOid,
+          diffSpec,
+          file,
+          signal,
+        ).then((diff) => [index, diff] as const),
+      ),
+    )
+    const patchDigest = hashJson({
+      summary,
+      diffs: diffs.sort(([left], [right]) => left - right),
+    })
+    return this.resolveRevision({
+      repoIdentity: repo.identity,
+      repoRoot: repo.root,
+      baseOid,
+      headOid,
+      diffSpec,
+      patchDigest,
+    })
+  }
+
+  async prepareWorking(
+    sessionId: SessionId,
+    signal: AbortSignal,
+  ): Promise<ScopeRecord> {
+    const cwd = this.ctx.sessions.get(sessionId)?.header.cwd
+    if (cwd === undefined)
+      throw new Error('Session working directory is unavailable')
+    const scope = await this.resolveWorking({ sessionId, cwd })
+    await this.refreshWorking(scope.scopeKey, signal)
+    return this.scopes().get(scope.scopeKey) ?? scope
+  }
+
+  private scopeDiffSpec(scope: ScopeRecord): RevisionDiffSpec {
+    return (
+      scope.diffSpec ?? {
+        ...DEFAULT_REVISION_DIFF_SPEC,
+        mergeBase: scope.kind === 'rev',
+      }
+    )
+  }
+
+  async workingSummary(scopeKey: string, signal: AbortSignal) {
+    const scope = this.scopes().get(scopeKey)
+    if (
+      scope === undefined ||
+      scope.kind !== 'work' ||
+      scope.repoRoot === null ||
+      scope.baseOid === null
+    ) {
+      throw new Error('Working scope is unavailable')
+    }
+    return workingSummary(
+      this.git,
+      scope.repoRoot,
+      scope.baseOid,
+      this.scopeDiffSpec(scope),
+      signal,
+    )
+  }
+
+  async workingDiff(scopeKey: string, index: number, signal: AbortSignal) {
+    const scope = this.scopes().get(scopeKey)
+    if (
+      scope === undefined ||
+      scope.kind !== 'work' ||
+      scope.repoRoot === null ||
+      scope.baseOid === null
+    ) {
+      throw new Error('Working scope is unavailable')
+    }
+    const summary = await this.workingSummary(scopeKey, signal)
+    const file = summary.files[index]
+    if (file === undefined) return undefined
+    return workingFileDiff(
+      this.git,
+      scope.repoRoot,
+      scope.baseOid,
+      this.scopeDiffSpec(scope),
+      file,
+      signal,
+    )
+  }
+
+  async refreshWorking(scopeKey: string, signal: AbortSignal) {
+    const scope = this.scopes().get(scopeKey)
+    if (
+      scope === undefined ||
+      scope.kind !== 'work' ||
+      scope.repoRoot === null ||
+      scope.baseOid === null
+    ) {
+      throw new Error('Working scope is unavailable')
+    }
+    const spec = this.scopeDiffSpec(scope)
+    const summary = await workingSummary(
+      this.git,
+      scope.repoRoot,
+      scope.baseOid,
+      spec,
+      signal,
+    )
+    const diffs = await Promise.all(
+      summary.files.map((file) =>
+        workingFileDiff(
+          this.git,
+          scope.repoRoot as string,
+          scope.baseOid as string,
+          spec,
+          file,
+          signal,
+        ),
+      ),
+    )
+    const patchDigest = hashJson({ summary, diffs })
+    if (patchDigest !== scope.patchDigest) {
+      await this.putScope({
+        ...scope,
+        patchDigest,
+        updatedAt: new Date().toISOString(),
+      })
+      await this.reanchorReview(scope.reviewId, diffs)
+      await this.markCodeChanged(scope.sessionId ?? '')
+    }
+    return summary
+  }
+
+  async refreshSessionWorking(
+    sessionId: SessionId,
+    signal: AbortSignal,
+  ): Promise<void> {
+    for (const [scopeKey, scope] of this.scopes().entries()) {
+      if (scope.kind === 'work' && scope.sessionId === sessionId) {
+        await this.refreshWorking(scopeKey, signal)
+      }
+    }
+  }
+
+  private async reanchorReview(
+    reviewId: string,
+    diffs: readonly Awaited<ReturnType<typeof workingFileDiff>>[],
+  ): Promise<void> {
+    const candidates = diffs.flatMap((diff) =>
+      diff.kind === 'text'
+        ? flattenDiffLines(diff.hunks).map((line) => ({
+            path: diff.path,
+            side: line.side,
+            line: line.line,
+            lineText: line.text,
+            beforeText: line.beforeText,
+            afterText: line.afterText,
+            hunkHeader: line.hunkHeader,
+            hunkText: line.hunkText,
+          }))
+        : [],
+    )
+    for (const thread of this.threadsForReview(reviewId)) {
+      if (thread.deletedAt !== null || thread.status === 'resolved') continue
+      const anchor = reanchor(thread.anchor, candidates)
+      const status = anchor === undefined ? 'outdated' : 'open'
+      if (anchor === undefined && thread.status === status) continue
+      const now = new Date().toISOString()
+      await this.threads().put(thread.threadId, {
+        ...thread,
+        ...(anchor === undefined ? {} : { anchor }),
+        status,
+        updatedAt: now,
+      })
+    }
+  }
+
+  async revisionSummary(scopeKey: string, signal: AbortSignal) {
+    const scope = this.scopes().get(scopeKey)
+    if (
+      scope === undefined ||
+      scope.repoRoot === null ||
+      scope.baseOid === null ||
+      scope.headOid === null
+    ) {
+      throw new Error('Revision scope is unavailable')
+    }
+    return revisionSummary(
+      this.git,
+      scope.repoRoot,
+      scope.baseOid,
+      scope.headOid,
+      this.scopeDiffSpec(scope),
+      signal,
+    )
+  }
+
+  async revisionDiff(scopeKey: string, index: number, signal: AbortSignal) {
+    const scope = this.scopes().get(scopeKey)
+    if (
+      scope === undefined ||
+      scope.repoRoot === null ||
+      scope.baseOid === null ||
+      scope.headOid === null
+    ) {
+      throw new Error('Revision scope is unavailable')
+    }
+    const summary = await this.revisionSummary(scopeKey, signal)
+    const file = summary.files[index]
+    if (file === undefined) return undefined
+    return revisionFileDiff(
+      this.git,
+      scope.repoRoot,
+      scope.baseOid,
+      scope.headOid,
+      this.scopeDiffSpec(scope),
+      file,
+      signal,
+    )
   }
 
   latestReviewForSession(sessionId: string): ReviewRecord | undefined {

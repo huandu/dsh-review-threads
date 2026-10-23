@@ -16,6 +16,15 @@ Review 后才对 AI 可见。AI 可以立即添加评论，但不能删除评论
 - Node.js 22.18 或更新版本
 - 已提交 revision review 需要 Git
 
+## Review 命令
+
+- `/review` 打开当前工作区未提交的变更，包括未跟踪文件。
+- `/review <base>..<head>` 打开已提交的 revision 区间；使用
+  `/review <base>...<head>` 时按 merge-base 比较。
+- 两种比较都可以追加 `-- <paths...>` 限定仓库路径。
+
+该命令只打开 Review 面板，不发送对话消息，也不会启动 AI 回合。
+
 ## 开发
 
 ```bash

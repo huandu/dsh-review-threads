@@ -87,5 +87,13 @@ export function reanchor(
       snapshotRevision: anchor.snapshotRevision,
     })
   }
+  if (exactHash.length === 1) {
+    const match = exactHash[0]
+    if (match === undefined) return undefined
+    return createAnchor({
+      ...match,
+      snapshotRevision: anchor.snapshotRevision,
+    })
+  }
   return undefined
 }

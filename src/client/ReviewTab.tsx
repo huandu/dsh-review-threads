@@ -7,8 +7,13 @@ import {
   diffUrl,
   EVENTS_PATH,
   parseReviewAddress,
+  revisionDiffUrl,
+  revisionSummaryUrl,
   reviewStateUrl,
+  scopeReviewStateUrl,
   summaryUrl,
+  workDiffUrl,
+  workSummaryUrl,
   type ReviewDecision,
   type ReviewFileDiff,
   type ReviewState,
@@ -90,6 +95,27 @@ function status(text: string): ReactNode {
 
 function unchanged(diff: ReviewFileDiff): boolean {
   return diff.kind === 'text' && diff.hunks.length === 0
+}
+
+function snapshotRevision(
+  coordinates: NonNullable<ReturnType<typeof parseReviewAddress>>,
+): string {
+  return coordinates.kind === 'turn'
+    ? `${coordinates.sessionId}:${String(coordinates.seq)}:${String(coordinates.turn)}`
+    : coordinates.scopeKey
+}
+
+function addressTitle(
+  coordinates: NonNullable<ReturnType<typeof parseReviewAddress>>,
+): string {
+  switch (coordinates.kind) {
+    case 'turn':
+      return `Review · turn ${String(coordinates.turn)}`
+    case 'work':
+      return 'Review · working tree'
+    case 'revision':
+      return 'Review · revision range'
+  }
 }
 
 const CSS = `
@@ -397,7 +423,11 @@ export function ReviewTab({
   const summary = useFetchState<ReviewSummary>(
     coordinates === undefined
       ? undefined
-      : summaryUrl(coordinates.sessionId, coordinates.seq),
+      : coordinates.kind === 'turn'
+        ? summaryUrl(coordinates.sessionId, coordinates.seq)
+        : coordinates.kind === 'work'
+          ? workSummaryUrl(coordinates.scopeKey)
+          : revisionSummaryUrl(coordinates.scopeKey),
     tab.signal,
   )
   const files = summary?.kind === 'ready' ? summary.value.files : []
@@ -406,13 +436,23 @@ export function ReviewTab({
   const diff = useFetchState<ReviewFileDiff>(
     coordinates === undefined || file === undefined
       ? undefined
-      : diffUrl(coordinates.sessionId, coordinates.seq, index),
+      : coordinates.kind === 'turn'
+        ? diffUrl(coordinates.sessionId, coordinates.seq, index)
+        : coordinates.kind === 'work'
+          ? workDiffUrl(coordinates.scopeKey, index)
+          : revisionDiffUrl(coordinates.scopeKey, index),
     tab.signal,
   )
   const reviewBase =
     coordinates === undefined
       ? undefined
-      : reviewStateUrl(coordinates.sessionId, coordinates.seq, coordinates.turn)
+      : coordinates.kind === 'turn'
+        ? reviewStateUrl(
+            coordinates.sessionId,
+            coordinates.seq,
+            coordinates.turn,
+          )
+        : scopeReviewStateUrl(coordinates.scopeKey, sessionId, 0)
   const review = useFetchState<ReviewState>(
     reviewBase === undefined
       ? undefined
@@ -430,7 +470,7 @@ export function ReviewTab({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           ...body,
-          sessionId: coordinates.sessionId,
+          sessionId,
           reviewId: review.value.reviewId,
           turn: review.value.currentTurn,
         }),
@@ -470,7 +510,7 @@ export function ReviewTab({
       <style>{CSS}</style>
       <div className="rt-head">
         {file === undefined ? (
-          <strong>Review · turn {coordinates.turn}</strong>
+          <strong>{addressTitle(coordinates)}</strong>
         ) : (
           <select
             className="rt-file-select"
@@ -544,7 +584,7 @@ export function ReviewTab({
                   afterText: line.afterText,
                   hunkHeader: line.hunkHeader,
                   hunkText: line.hunkText,
-                  snapshotRevision: `${coordinates.sessionId}:${String(coordinates.seq)}:${String(coordinates.turn)}`,
+                  snapshotRevision: snapshotRevision(coordinates),
                 },
                 body: text,
               })

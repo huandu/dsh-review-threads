@@ -22,12 +22,23 @@ export type AuthorKind = z.infer<typeof authorSchema>
 export const diffSideSchema = z.enum(['old', 'new'])
 export type DiffSide = z.infer<typeof diffSideSchema>
 
+export const revisionDiffSpecSchema = z
+  .object({
+    mergeBase: z.boolean(),
+    detectRenames: z.boolean(),
+    ignoreWhitespace: z.enum(['none', 'change', 'all']),
+    contextLines: z.number().int().nonnegative().max(100),
+    pathFilters: z.array(z.string().min(1).max(4096)).max(200),
+  })
+  .strict()
+
 export const scopeRecordSchema = z
   .object({
     reviewId: id,
     scopeKey: z.string().min(1),
     kind: z.enum(['turn', 'work', 'rev']),
     repoIdentity: z.string().min(1).nullable(),
+    repoRoot: z.string().min(1).nullable(),
     sessionId: z.string().min(1).nullable(),
     eventSeq: z.number().int().nonnegative().nullable(),
     turn: z.number().int().positive().nullable(),
@@ -35,6 +46,8 @@ export const scopeRecordSchema = z
     headOid: z.string().min(1).nullable(),
     patchDigest: z.string().min(1).nullable(),
     diffSpecDigest: z.string().min(1).nullable(),
+    diffSpec: revisionDiffSpecSchema.nullable(),
+    mergeBase: z.boolean().nullable(),
     createdAt: timestamp,
     updatedAt: timestamp,
   })

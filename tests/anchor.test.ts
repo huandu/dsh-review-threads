@@ -41,4 +41,18 @@ describe('diff anchors', () => {
       ]),
     ).toBeUndefined()
   })
+
+  it('recovers a unique line after surrounding context changes', () => {
+    const anchor = createAnchor({ ...base, snapshotRevision: 'snap-1' })
+    expect(
+      reanchor(anchor, [
+        {
+          ...base,
+          line: 20,
+          beforeText: 'new context',
+          afterText: null,
+        },
+      ]),
+    ).toMatchObject({ line: 20, snapshotRevision: 'snap-1' })
+  })
 })

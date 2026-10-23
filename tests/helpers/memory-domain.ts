@@ -39,7 +39,10 @@ export interface MemoryServiceHarness {
   readonly followups: readonly UserMessage[]
 }
 
-export function createMemoryService(): MemoryServiceHarness {
+export function createMemoryService(options?: {
+  readonly git?: GitRunner
+  readonly cwd?: string
+}): MemoryServiceHarness {
   const tables = new Map<string, MemoryTable>()
   const domain = {
     table(name: string) {
@@ -60,9 +63,18 @@ export function createMemoryService(): MemoryServiceHarness {
         },
       }),
     },
+    sessions: {
+      get: () => ({
+        header: { cwd: options?.cwd ?? '/workspace' },
+      }),
+    },
   } as unknown as Context
   return {
-    service: new ReviewThreadService(ctx, domain, {} as GitRunner),
+    service: new ReviewThreadService(
+      ctx,
+      domain,
+      options?.git ?? ({} as GitRunner),
+    ),
     followups,
   }
 }

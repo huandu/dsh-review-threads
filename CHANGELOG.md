@@ -22,3 +22,7 @@
   obligation.
 - Broadcast durable review changes over an authenticated SSE channel and refresh
   every open Review tab in the same Host process.
+- Add `/review` for the current working tree, including untracked files, and
+  resolved commit ranges with optional path filters.
+- Persist working-tree snapshots across turns, re-anchor surviving threads, and
+  share committed revision Reviews across sessions.
