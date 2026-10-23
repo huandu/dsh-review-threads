@@ -1,0 +1,4 @@
+# Install the Host service and its Web Client bundle from the same package.
+- insert:
+    - id: dsh-review-threads
+      name: dsh-review-threads
