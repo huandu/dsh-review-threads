@@ -189,6 +189,14 @@ export class ReviewThreadService {
     return this.reviews().get(reviewId)
   }
 
+  latestReviewForSession(sessionId: string): ReviewRecord | undefined {
+    const scope = [...this.scopes().entries()]
+      .map(([, value]) => value)
+      .filter((value) => value.sessionId === sessionId)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
+    return scope === undefined ? undefined : this.reviews().get(scope.reviewId)
+  }
+
   getThread(threadId: string): ThreadRecord | undefined {
     return this.threads().get(threadId)
   }

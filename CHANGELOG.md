@@ -17,3 +17,6 @@
   one follow-up turn through `agent.followup()`.
 - Add blocking-review detection, post-change Approve eligibility, and
   non-terminal approval behavior.
+- Register the bundled `dsh-review-threads` skill plus model tools for listing,
+  reading, and adding review comments with an explicit user-announcement
+  obligation.

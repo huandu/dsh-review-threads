@@ -14,6 +14,7 @@ for (const path of [
   'cordis.patch.yml',
   'README.md',
   'LICENSE',
+  'skills/dsh-review-threads/SKILL.md',
   'lib/index.js',
   'lib/client.js',
 ]) {

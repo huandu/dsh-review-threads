@@ -38,7 +38,7 @@ function operationLine(operation: ReviewOperation): string {
 
 export function renderReviewSubmission(submission: ReviewSubmission): string {
   const lines = [
-    `<review_submission review_id="${submission.submissionId}" verdict="${submission.verdict}">`,
+    `<review_submission submission_id="${submission.submissionId}" review_id="${submission.reviewId}" verdict="${submission.verdict}">`,
     `  <instruction>${instruction(submission.verdict)}</instruction>`,
   ]
   if (submission.summaryText.length > 0) {
