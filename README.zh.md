@@ -1,5 +1,11 @@
 # dsh-review-threads
 
+[![npm 版本](https://img.shields.io/npm/v/dsh-review-threads.svg)](https://www.npmjs.com/package/dsh-review-threads)
+[![npm 下载量](https://img.shields.io/npm/dm/dsh-review-threads.svg)](https://www.npmjs.com/package/dsh-review-threads)
+[![验证状态](https://github.com/huandu/dsh-review-threads/actions/workflows/verify.yml/badge.svg)](https://github.com/huandu/dsh-review-threads/actions/workflows/verify.yml)
+[![DeepSeek Harness 插件](https://img.shields.io/badge/DSH-plugin-4B32C3.svg)](https://github.com/topics/dsh-plugin)
+[![MIT 许可](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 面向 DeepSeek Harness diff 的持久化 GitHub 式评审线程。
 
 插件接管官方 `changes-review` tab，并继续使用官方 turn diff 数据源。一个
@@ -8,7 +14,7 @@ Review 后才对 AI 可见。AI 可以立即添加评论，但不能删除评论
 
 ## 状态
 
-`0.1.0` 是首个正式版本。DeepSeek Harness 本身仍处于 preview 阶段，安装前请
+`0.1.1` 是当前正式版本。DeepSeek Harness 本身仍处于 preview 阶段，安装前请
 确认兼容范围。
 
 ## 要求

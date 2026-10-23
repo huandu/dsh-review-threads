@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1 - 2026-10-24
+
+- Add npm, package-download, GitHub Actions, DSH plugin, and license badges.
+- Publish future GitHub Releases through npm Trusted Publishing without storing
+  an npm token in GitHub.
+
 ## 0.1.0 - 2026-10-24
 
 - Establish the plugin design, review aggregate, and project governance.

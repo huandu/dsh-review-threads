@@ -1,6 +1,6 @@
 {
   "name": "dsh-review-threads",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Persistent GitHub-style review threads for DeepSeek Harness diffs, shared by users and AI.",
   "keywords": [
     "deepseek-harness",

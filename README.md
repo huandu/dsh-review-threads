@@ -1,5 +1,11 @@
 # dsh-review-threads
 
+[![npm version](https://img.shields.io/npm/v/dsh-review-threads.svg)](https://www.npmjs.com/package/dsh-review-threads)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-review-threads.svg)](https://www.npmjs.com/package/dsh-review-threads)
+[![verify](https://github.com/huandu/dsh-review-threads/actions/workflows/verify.yml/badge.svg)](https://github.com/huandu/dsh-review-threads/actions/workflows/verify.yml)
+[![DeepSeek Harness plugin](https://img.shields.io/badge/DSH-plugin-4B32C3.svg)](https://github.com/topics/dsh-plugin)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Persistent, GitHub-style review threads for DeepSeek Harness diffs.
 
 `dsh-review-threads` takes over the official `changes-review` tab and keeps the
@@ -10,7 +16,7 @@ threads.
 
 ## Status
 
-Version `0.1.0` is the first release. DeepSeek Harness itself remains in preview,
+Version `0.1.1` is the current release. DeepSeek Harness itself remains in preview,
 so review the compatibility range before installing.
 
 ## Requirements
