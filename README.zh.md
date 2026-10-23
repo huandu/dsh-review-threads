@@ -39,6 +39,12 @@ dsh plugin --profile web add dsh-review-threads
 
 该命令只打开 Review 面板，不发送对话消息，也不会启动 AI 回合。
 
+## 发布
+
+为与包版本一致的 tag 创建正式 GitHub Release 后，
+`.github/workflows/publish.yml` 会验证项目、构建并通过 npm Trusted Publisher
+发布。GitHub 中不保存 npm token。
+
 ## 开发
 
 ```bash

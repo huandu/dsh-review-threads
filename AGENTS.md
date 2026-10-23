@@ -138,4 +138,6 @@ private-API dependency requires an ADR and an explicit fallback before use.
 
 Only maintainers publish. npm, GitHub Release, tag, and CHANGELOG versions must
 match. Verify npm installation, GitHub installation, removal behavior, and
-preservation of user review data before release.
+preservation of user review data before release. Publishing runs from
+`.github/workflows/publish.yml` through npm Trusted Publishing; do not add npm
+tokens or token-based publish secrets to the repository.

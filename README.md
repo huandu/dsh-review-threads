@@ -42,6 +42,13 @@ official Review tab; review data stays under the profile's DSH storage.
 The command only opens the Review panel. It does not send a conversation
 message or start an AI turn.
 
+## Releases
+
+Creating a non-prerelease GitHub Release for a tag matching the package version
+runs `.github/workflows/publish.yml`. The workflow verifies the repository,
+builds the package, and publishes through the npm Trusted Publisher connection;
+no npm token is stored in GitHub.
+
 ## Development
 
 ```bash
