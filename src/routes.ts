@@ -6,12 +6,14 @@ import type { AnchorInput } from './anchor.js'
 import {
   ACTION_PATH,
   DIFF_PATH,
+  EVENTS_PATH,
   REVIEW_STATE_PATH,
   SUMMARY_PATH,
   type ReviewState,
   type ReviewSummary,
   type ReviewThreadView,
 } from './protocol.js'
+import { eventStream, type RealtimeHub } from './realtime.js'
 import { hashJson } from './scope.js'
 import './types.js'
 
@@ -363,7 +365,10 @@ async function actionHandler(
   }
 }
 
-export function registerReviewRoutes(ctx: Context): void {
+export function registerReviewRoutes(
+  ctx: Context,
+  realtime: RealtimeHub,
+): void {
   ctx.connection.fetch.register({
     path: SUMMARY_PATH,
     methods: ['GET'],
@@ -387,5 +392,20 @@ export function registerReviewRoutes(ctx: Context): void {
     methods: ['POST'],
     requestBody: 'buffered',
     fetch: async (request) => actionHandler(ctx, request),
+  })
+  ctx.connection.fetch.register({
+    path: EVENTS_PATH,
+    methods: ['GET'],
+    requestBody: 'buffered',
+    fetch: (request) =>
+      Promise.resolve(
+        new Response(eventStream(realtime, request.signal), {
+          headers: {
+            'cache-control': 'no-store',
+            connection: 'keep-alive',
+            'content-type': 'text/event-stream; charset=utf-8',
+          },
+        }),
+      ),
   })
 }

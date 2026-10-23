@@ -10,6 +10,7 @@ export const SUMMARY_PATH = '/api/plugins/dsh-review-threads/changes.summary'
 export const DIFF_PATH = '/api/plugins/dsh-review-threads/changes.diff'
 export const REVIEW_STATE_PATH = '/api/plugins/dsh-review-threads/review'
 export const ACTION_PATH = '/api/plugins/dsh-review-threads/action'
+export const EVENTS_PATH = '/api/plugins/dsh-review-threads/events'
 
 export interface ReviewAddress {
   readonly sessionId: string

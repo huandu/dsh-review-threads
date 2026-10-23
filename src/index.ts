@@ -9,6 +9,7 @@ import type {} from '@deepseek-ai/dsh-workspace-changes/types'
 import { reviewThreadsDomain } from './domain.js'
 import { GitRunner } from './git.js'
 import { registerReviewRoutes } from './routes.js'
+import { RealtimeHub } from './realtime.js'
 import { ReviewThreadService } from './service.js'
 import { registerReviewSkill } from './skills.js'
 import { registerReviewTools } from './tools.js'
@@ -31,12 +32,16 @@ export async function apply(ctx: Context): Promise<void> {
   const domain = await ctx.storageDomain.open(reviewThreadsDomain)
   const git = new GitRunner(ctx, lifetime.signal)
   const service = new ReviewThreadService(ctx, domain, git)
+  const realtime = new RealtimeHub()
   ctx.provide('reviewThreads', service)
   registerReviewTools(ctx, service)
   await registerReviewSkill(ctx)
   ctx.on('session/event', (session, event) => {
     if (event.type !== 'workspace/changes') return
     void service.markCodeChanged(session.id)
+  })
+  ctx.on('domain/changed', (event) => {
+    if (event.domain === 'review_threads') realtime.notify()
   })
   ctx.effect(
     () => async () => {
@@ -45,5 +50,5 @@ export async function apply(ctx: Context): Promise<void> {
     },
     'dsh-review-threads: storage',
   )
-  registerReviewRoutes(ctx)
+  registerReviewRoutes(ctx, realtime)
 }

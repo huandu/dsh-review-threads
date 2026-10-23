@@ -5,6 +5,7 @@ import { flattenDiffLines, type DiffLine } from '../diff-lines.js'
 import {
   ACTION_PATH,
   diffUrl,
+  EVENTS_PATH,
   parseReviewAddress,
   reviewStateUrl,
   summaryUrl,
@@ -378,6 +379,20 @@ export function ReviewTab({
     readonly verdict: ReviewDecision
     readonly summary: string
   } | null>(null)
+  useEffect(() => {
+    const source = new EventSource(EVENTS_PATH)
+    source.onmessage = () => {
+      setRefresh((value) => value + 1)
+    }
+    const close = (): void => {
+      source.close()
+    }
+    tab.signal.addEventListener('abort', close, { once: true })
+    return () => {
+      tab.signal.removeEventListener('abort', close)
+      source.close()
+    }
+  }, [tab.signal])
   const cwd = useSessions((sessions) => sessions.byId[sessionId]?.cwd)
   const summary = useFetchState<ReviewSummary>(
     coordinates === undefined

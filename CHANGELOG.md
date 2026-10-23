@@ -20,3 +20,5 @@
 - Register the bundled `dsh-review-threads` skill plus model tools for listing,
   reading, and adding review comments with an explicit user-announcement
   obligation.
+- Broadcast durable review changes over an authenticated SSE channel and refresh
+  every open Review tab in the same Host process.
