@@ -15,7 +15,7 @@ const anchor = {
 
 describe('ReviewThreadService', () => {
   it('keeps one Review per resolved turn scope', async () => {
-    const service = createMemoryService()
+    const { service } = createMemoryService()
     const first = await service.resolveTurn({
       sessionId: sessionId(),
       eventSeq: 5,
@@ -35,7 +35,7 @@ describe('ReviewThreadService', () => {
   })
 
   it('hides user draft comments from AI until submission', async () => {
-    const service = createMemoryService()
+    const { service, followups } = createMemoryService()
     const scope = await service.resolveTurn({
       sessionId: sessionId(),
       eventSeq: 5,
@@ -54,13 +54,15 @@ describe('ReviewThreadService', () => {
 
     const submission = await service.submitDraft(added.draft.draftId)
     expect(submission.verdict).toBe('comment')
+    expect(submission.state).toBe('submitted')
+    expect(followups).toHaveLength(1)
     expect(service.aiThreads(scope.reviewId)[0]?.comments[0]?.body).toBe(
       'Please explain this.',
     )
   })
 
   it('merges AI comments into a user draft thread without exposing draft text', async () => {
-    const service = createMemoryService()
+    const { service } = createMemoryService()
     const scope = await service.resolveTurn({
       sessionId: sessionId(),
       eventSeq: 5,
@@ -86,7 +88,7 @@ describe('ReviewThreadService', () => {
   })
 
   it('does not change the Review decision when a thread is resolved', async () => {
-    const service = createMemoryService()
+    const { service } = createMemoryService()
     const scope = await service.resolveTurn({
       sessionId: sessionId(),
       eventSeq: 5,
@@ -117,8 +119,44 @@ describe('ReviewThreadService', () => {
     )
   })
 
+  it('makes approval available only after blocking feedback and a later code change', async () => {
+    const { service } = createMemoryService()
+    const scope = await service.resolveTurn({
+      sessionId: sessionId(),
+      eventSeq: 5,
+      turn: 2,
+      patchDigest: 'patch-1',
+    })
+    const added = await service.addUserComment({
+      reviewId: scope.reviewId,
+      sessionId: sessionId(),
+      turn: 2,
+      anchor,
+      body: 'Change this.',
+    })
+    await service.updateDraft(added.draft.draftId, {
+      verdict: 'request_changes',
+    })
+    await service.submitDraft(added.draft.draftId)
+    expect(service.approvalAvailable(scope.reviewId, sessionId())).toBe(false)
+    await service.markCodeChanged(sessionId())
+    expect(service.approvalAvailable(scope.reviewId, sessionId())).toBe(true)
+
+    await service.setThreadStatus({
+      reviewId: scope.reviewId,
+      sessionId: sessionId(),
+      turn: 3,
+      threadId: added.thread.threadId,
+      status: 'resolved',
+    })
+    expect(service.approvalAvailable(scope.reviewId, sessionId())).toBe(false)
+    expect(service.getReview(scope.reviewId)?.currentDecision).toBe(
+      'request_changes',
+    )
+  })
+
   it('keeps approval as a non-terminal decision', async () => {
-    const service = createMemoryService()
+    const { service } = createMemoryService()
     const scope = await service.resolveTurn({
       sessionId: sessionId(),
       eventSeq: 5,

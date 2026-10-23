@@ -1,4 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { randomUUID } from 'node:crypto'
@@ -17,6 +18,7 @@ import {
   type ThreadStatus,
 } from './domain.js'
 import { resolveRepositoryIdentity, type GitRunner } from './git.js'
+import { renderReviewSubmission } from './prompt.js'
 import {
   DEFAULT_REVISION_DIFF_SPEC,
   normalizeDiffSpec,
@@ -101,6 +103,7 @@ export class ReviewThreadService {
         currentDecision: null,
         currentDecisionAt: null,
         currentDecisionSubmissionId: null,
+        codeChangedSinceDecision: false,
         createdAt: now,
         updatedAt: now,
       }
@@ -205,6 +208,39 @@ export class ReviewThreadService {
 
   getSubmission(submissionId: string): ReviewSubmission | undefined {
     return this.submissions().get(submissionId)
+  }
+
+  async markCodeChanged(sessionId: string): Promise<void> {
+    const scopes = [...this.scopes().entries()]
+      .map(([, scope]) => scope)
+      .filter((scope) => scope.sessionId === sessionId)
+    for (const scope of scopes) {
+      const review = this.reviews().get(scope.reviewId)
+      if (
+        review === undefined ||
+        (review.currentDecision !== 'request_changes' &&
+          review.currentDecision !== 'reject') ||
+        review.codeChangedSinceDecision
+      ) {
+        continue
+      }
+      await this.reviews().put(review.reviewId, {
+        ...review,
+        codeChangedSinceDecision: true,
+        updatedAt: new Date().toISOString(),
+      })
+    }
+  }
+
+  approvalAvailable(reviewId: string, sessionId: string): boolean {
+    const review = this.reviews().get(reviewId)
+    return (
+      review !== undefined &&
+      (review.currentDecision === 'request_changes' ||
+        review.currentDecision === 'reject') &&
+      review.codeChangedSinceDecision &&
+      this.draftFor(reviewId, sessionId) === undefined
+    )
   }
 
   threadsForReview(reviewId: string): readonly ThreadRecord[] {
@@ -772,10 +808,10 @@ export class ReviewThreadService {
       verdict: draft.verdict,
       summaryText: draft.summaryText,
       operations: [...operations],
-      state: 'submitted',
+      state: 'submitting',
       messageId: null,
       createdAt: now,
-      submittedAt: now,
+      submittedAt: null,
     }
     await this.submissions().put(submission.submissionId, submission)
     await this.reviews().put(review.reviewId, {
@@ -783,9 +819,42 @@ export class ReviewThreadService {
       currentDecision: draft.verdict,
       currentDecisionAt: now,
       currentDecisionSubmissionId: submission.submissionId,
+      codeChangedSinceDecision: false,
       updatedAt: now,
     })
     await this.drafts().delete(draftId)
-    return submission
+    const agent = this.ctx.agents.get(draft.sessionId as SessionId)
+    if (agent === undefined) {
+      await this.submissions().put(submission.submissionId, {
+        ...submission,
+        state: 'submit_failed',
+      })
+      throw new Error('The target agent is no longer available')
+    }
+    const message = createUserMessage({
+      content: [{ type: 'text', text: renderReviewSubmission(submission) }],
+      source: {
+        kind: 'dsh-review-threads',
+        form: 'notice',
+        summary: `Submitted ${draft.verdict} review`,
+      },
+    })
+    try {
+      agent.followup(message)
+    } catch (error) {
+      await this.submissions().put(submission.submissionId, {
+        ...submission,
+        state: 'submit_failed',
+      })
+      throw error
+    }
+    const completed: ReviewSubmission = {
+      ...submission,
+      state: 'submitted',
+      messageId: message.id,
+      submittedAt: new Date().toISOString(),
+    }
+    await this.submissions().put(completed.submissionId, completed)
+    return completed
   }
 }

@@ -140,6 +140,10 @@ async function reviewStateHandler(
     reviewId: review.reviewId,
     scopeKey: scope.scopeKey,
     currentDecision: review.currentDecision,
+    approvalAvailable: ctx.reviewThreads.approvalAvailable(
+      review.reviewId,
+      sessionId,
+    ),
     currentTurn: turn,
     threads: ctx.reviewThreads
       .userThreads(review.reviewId)
@@ -240,6 +244,10 @@ async function actionHandler(
     const turn = number(body['turn'], 'turn')
     const review = ctx.reviewThreads.getReview(reviewId)
     if (review === undefined) return json({ error: 'not-found' }, 404)
+    const approvalAvailable = ctx.reviewThreads.approvalAvailable(
+      reviewId,
+      sessionId,
+    )
     const draft = await ctx.reviewThreads.ensureDraft(reviewId, sessionId, turn)
     switch (action) {
       case 'add_comment': {
@@ -315,6 +323,32 @@ async function actionHandler(
       case 'cancel_draft': {
         await ctx.reviewThreads.cancelDraft(draft.draftId)
         break
+      }
+      case 'submit_review': {
+        const verdict = body['verdict']
+        if (
+          verdict !== 'approve' &&
+          verdict !== 'comment' &&
+          verdict !== 'request_changes' &&
+          verdict !== 'reject'
+        ) {
+          throw new Error('Invalid verdict')
+        }
+        if (
+          draft.threadIds.length === 0 &&
+          (verdict !== 'approve' || !approvalAvailable)
+        ) {
+          return conflict('No review is ready to submit')
+        }
+        await ctx.reviewThreads.updateDraft(draft.draftId, {
+          verdict,
+          summaryText:
+            typeof body['summaryText'] === 'string'
+              ? body['summaryText'].slice(0, 20_000)
+              : draft.summaryText,
+        })
+        const submission = await ctx.reviewThreads.submitDraft(draft.draftId)
+        return json({ ok: true, submission })
       }
       default:
         return badRequest(`Unknown action: ${action}`)

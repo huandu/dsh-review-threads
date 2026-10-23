@@ -102,6 +102,7 @@ export const reviewRecordSchema = z
     currentDecision: decisionSchema.nullable(),
     currentDecisionAt: timestamp.nullable(),
     currentDecisionSubmissionId: id.nullable(),
+    codeChangedSinceDecision: z.boolean(),
     createdAt: timestamp,
     updatedAt: timestamp,
   })

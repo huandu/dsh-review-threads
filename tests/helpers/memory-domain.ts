@@ -1,4 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
+import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { GitRunner } from '../../src/git.js'
@@ -33,7 +34,12 @@ class MemoryTable implements TableLike {
   }
 }
 
-export function createMemoryService(): ReviewThreadService {
+export interface MemoryServiceHarness {
+  readonly service: ReviewThreadService
+  readonly followups: readonly UserMessage[]
+}
+
+export function createMemoryService(): MemoryServiceHarness {
   const tables = new Map<string, MemoryTable>()
   const domain = {
     table(name: string) {
@@ -45,7 +51,20 @@ export function createMemoryService(): ReviewThreadService {
       return table
     },
   } as unknown as Domain<typeof reviewThreadsDomain>
-  return new ReviewThreadService({} as Context, domain, {} as GitRunner)
+  const followups: UserMessage[] = []
+  const ctx = {
+    agents: {
+      get: () => ({
+        followup: (message: UserMessage) => {
+          followups.push(message)
+        },
+      }),
+    },
+  } as unknown as Context
+  return {
+    service: new ReviewThreadService(ctx, domain, {} as GitRunner),
+    followups,
+  }
 }
 
 export function sessionId(value = 'session-1'): SessionId {

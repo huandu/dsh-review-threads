@@ -13,3 +13,7 @@
   AI authorship rules, and body-free deletion tombstones.
 - Add the in-panel review thread UI, line comment controls, reply composer,
   review draft controls, and permission-aware thread actions.
+- Submit four review verdicts as immutable ReviewSubmissions and wake exactly
+  one follow-up turn through `agent.followup()`.
+- Add blocking-review detection, post-change Approve eligibility, and
+  non-terminal approval behavior.

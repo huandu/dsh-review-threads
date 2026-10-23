@@ -78,6 +78,7 @@ export interface ReviewState {
   readonly reviewId: string
   readonly scopeKey: string
   readonly currentDecision: ReviewDecision | null
+  readonly approvalAvailable: boolean
   readonly currentTurn: number
   readonly threads: readonly ReviewThreadView[]
   readonly draft: ReviewDraftView | null

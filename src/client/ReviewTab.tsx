@@ -124,6 +124,9 @@ const CSS = `
 .rt-comment-author{font-size:11px;color:var(--dsw-alias-label-tertiary);margin-bottom:3px}.rt-comment-body{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}
 .rt-inline-actions{display:flex;gap:6px;margin-top:5px}.rt-link{border:0;background:transparent;color:var(--dsw-alias-link);padding:0;font-size:11px;cursor:pointer}
 .rt-compose{padding:8px 10px;display:flex;flex-direction:column;gap:6px}.rt-compose-actions{display:flex;justify-content:flex-end;gap:6px}
+.rt-modal-backdrop{position:absolute;inset:0;z-index:20;background:color-mix(in srgb,var(--dsw-alias-bg-l0) 52%,transparent);display:flex;align-items:center;justify-content:center;padding:20px}
+.rt-modal{width:min(520px,100%);border:1px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-l1);box-shadow:0 18px 50px color-mix(in srgb,var(--dsw-alias-bg-l0) 55%,transparent);padding:16px;display:flex;flex-direction:column;gap:12px}
+.rt-modal h2{margin:0;font-size:16px}.rt-modal-actions{display:flex;justify-content:flex-end;gap:8px}
 @media (max-width:700px){.rt-file-select{max-width:none;flex-basis:100%}.rt-line{grid-template-columns:2.8em 2.8em 1.2em 1.6em minmax(0,1fr)}.rt-thread{margin-left:10px;margin-right:10px}.rt-draft{grid-template-columns:1fr auto}.rt-draft .rt-select{grid-column:1/-1}.rt-draft .rt-input{grid-column:1/-1}}
 `
 
@@ -371,6 +374,10 @@ export function ReviewTab({
   const [activeLine, setActiveLine] = useState<string>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
+  const [dialog, setDialog] = useState<{
+    readonly verdict: ReviewDecision
+    readonly summary: string
+  } | null>(null)
   const cwd = useSessions((sessions) => sessions.byId[sessionId]?.cwd)
   const summary = useFetchState<ReviewSummary>(
     coordinates === undefined
@@ -398,8 +405,8 @@ export function ReviewTab({
     tab.signal,
   )
 
-  const act = async (body: Record<string, unknown>): Promise<void> => {
-    if (review?.kind !== 'ready' || coordinates === undefined) return
+  const act = async (body: Record<string, unknown>): Promise<boolean> => {
+    if (review?.kind !== 'ready' || coordinates === undefined) return false
     setBusy(true)
     setError(undefined)
     try {
@@ -424,8 +431,10 @@ export function ReviewTab({
         )
       }
       setRefresh((value) => value + 1)
+      return true
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
+      return false
     } finally {
       setBusy(false)
     }
@@ -438,6 +447,8 @@ export function ReviewTab({
   const draft = review?.kind === 'ready' ? review.value.draft : null
   const decision =
     review?.kind === 'ready' ? review.value.currentDecision : null
+  const approvalAvailable =
+    review?.kind === 'ready' && review.value.approvalAvailable && draft === null
 
   return (
     <div className="rt-root">
@@ -583,9 +594,99 @@ export function ReviewTab({
           >
             Cancel
           </button>
-          <button className="rt-primary" type="button" disabled>
+          <button
+            className="rt-primary"
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setDialog({ verdict: draft.verdict, summary: draft.summaryText })
+            }}
+          >
             Submit review
           </button>
+        </div>
+      )}
+      {approvalAvailable && (
+        <div className="rt-draft">
+          <span className="rt-decision">Blocking review awaiting approval</span>
+          <span />
+          <span />
+          <button
+            className="rt-primary"
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setDialog({ verdict: 'approve', summary: '' })
+            }}
+          >
+            Approve
+          </button>
+        </div>
+      )}
+      {dialog !== null && (
+        <div className="rt-modal-backdrop" role="presentation">
+          <div
+            className="rt-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Submit review"
+          >
+            <h2>Submit review</h2>
+            <select
+              className="rt-select"
+              value={dialog.verdict}
+              onChange={(event) => {
+                setDialog({
+                  ...dialog,
+                  verdict: event.currentTarget.value as ReviewDecision,
+                })
+              }}
+            >
+              <option value="comment">Comment</option>
+              <option value="approve">Approve</option>
+              <option value="request_changes">Request changes</option>
+              <option value="reject">Reject</option>
+            </select>
+            <textarea
+              className="rt-textarea"
+              placeholder="Optional overall summary"
+              value={dialog.summary}
+              onChange={(event) => {
+                setDialog({
+                  ...dialog,
+                  summary: event.currentTarget.value,
+                })
+              }}
+            />
+            <div className="rt-modal-actions">
+              <button
+                className="rt-secondary"
+                type="button"
+                onClick={() => {
+                  setDialog(null)
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="rt-primary"
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  void (async () => {
+                    const saved = await act({
+                      action: 'submit_review',
+                      verdict: dialog.verdict,
+                      summaryText: dialog.summary,
+                    })
+                    if (saved) setDialog(null)
+                  })()
+                }}
+              >
+                Submit
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

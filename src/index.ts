@@ -1,4 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-storage-domain'
@@ -12,6 +13,7 @@ import { ReviewThreadService } from './service.js'
 export const name = 'dsh-review-threads'
 
 export const inject = [
+  'agents',
   'connection',
   'sessions',
   'storageDomain',
@@ -25,6 +27,10 @@ export async function apply(ctx: Context): Promise<void> {
   const git = new GitRunner(ctx, lifetime.signal)
   const service = new ReviewThreadService(ctx, domain, git)
   ctx.provide('reviewThreads', service)
+  ctx.on('session/event', (session, event) => {
+    if (event.type !== 'workspace/changes') return
+    void service.markCodeChanged(session.id)
+  })
   ctx.effect(
     () => async () => {
       lifetime.abort()
